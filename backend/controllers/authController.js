@@ -18,10 +18,10 @@ function parseDuration(input, fallbackMs) {
     unit === "s"
       ? 1000
       : unit === "m"
-      ? 60 * 1000
-      : unit === "h"
-      ? 60 * 60 * 1000
-      : 24 * 60 * 60 * 1000;
+        ? 60 * 1000
+        : unit === "h"
+          ? 60 * 60 * 1000
+          : 24 * 60 * 60 * 1000;
   return n * mult;
 }
 
@@ -42,23 +42,23 @@ function mapLegacyRole(role_id) {
 
 const ACCESS_TTL_MS = parseDuration(
   process.env.ACCESS_TOKEN_TTL || "15m",
-  15 * 60 * 1000
+  15 * 60 * 1000,
 );
 const REFRESH_TTL_MS = parseDuration(
   process.env.REFRESH_TOKEN_TTL || "30d",
-  30 * 24 * 60 * 60 * 1000
+  30 * 24 * 60 * 60 * 1000,
 );
 
 const baseCookieOpts = {
   httpOnly: true,
-  sameSite: "lax",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   secure: process.env.NODE_ENV === "production",
   path: "/",
 };
 
 function setAuthCookies(
   res,
-  { accessToken, refreshToken, accessExpiresAt, refreshExpiresAt }
+  { accessToken, refreshToken, accessExpiresAt, refreshExpiresAt },
 ) {
   res.cookie("access_token", accessToken, {
     ...baseCookieOpts,
@@ -84,7 +84,7 @@ function createAccessToken({ userId, role }) {
   const exp = now + Math.floor(ACCESS_TTL_MS / 1000);
   const token = jwt.sign(
     { sub: userId, role, iat: now, exp },
-    process.env.JWT_SECRET
+    process.env.JWT_SECRET,
   );
   return { token, expMs: exp * 1000 };
 }
@@ -121,15 +121,14 @@ async function getLinkedStudents(userId, role) {
     // Non-parents might have linkedStudents from User model (for future use)
     return [];
   }
-  
+
   // For parents, fetch from Parent model
   const parentRecords = await Parent.find({ user_id: userId })
     .select("student_id")
     .lean();
-  
-  return parentRecords.map(p => String(p.student_id));
-}
 
+  return parentRecords.map((p) => String(p.student_id));
+}
 
 export async function login(req, res) {
   try {
@@ -194,7 +193,10 @@ export async function login(req, res) {
     });
 
     // Get linked students for parent users
-    const linkedStudents = await getLinkedStudents(String(user._id), normalizedRole);
+    const linkedStudents = await getLinkedStudents(
+      String(user._id),
+      normalizedRole,
+    );
 
     const snapshot = {
       id: String(user._id),
@@ -223,21 +225,34 @@ export async function requestOtp(req, res) {
 
     // Rate limit per phone
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const recent = await Otp.countDocuments({ phone, createdAt: { $gte: hourAgo } });
+    const recent = await Otp.countDocuments({
+      phone,
+      createdAt: { $gte: hourAgo },
+    });
     if (recent >= OTP_MAX_PER_HOUR) {
-      return res.status(429).json({ error: "Too many OTP requests. Try again later" });
+      return res
+        .status(429)
+        .json({ error: "Too many OTP requests. Try again later" });
     }
 
     // create OTP
     const code = generateOtpCode();
     const codeHash = crypto.createHash("sha256").update(code).digest("hex");
     const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-    await Otp.create({ phone, codeHash, expiresAt, device: req.headers["user-agent"] || "unknown", ip: req.ip });
+    await Otp.create({
+      phone,
+      codeHash,
+      expiresAt,
+      device: req.headers["user-agent"] || "unknown",
+      ip: req.ip,
+    });
     await sendOtpToPhone(phone, code);
     return res.json({ success: true, message: "OTP sent" });
   } catch (err) {
     console.error("requestOtp error:", err);
-    return res.status(500).json({ error: "Failed to request OTP", details: err?.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to request OTP", details: err?.message });
   }
 }
 
@@ -245,11 +260,17 @@ export async function verifyOtp(req, res) {
   try {
     const { phone: rawPhone, otp } = req.body || {};
     const phone = (rawPhone || "").toString().trim();
-    if (!phone || !otp) return res.status(400).json({ error: "Missing phone or otp" });
+    if (!phone || !otp)
+      return res.status(400).json({ error: "Missing phone or otp" });
 
     // find latest valid OTP
-    const rec = await Otp.findOne({ phone, used: { $ne: true }, expiresAt: { $gt: new Date() } }).sort({ createdAt: -1 });
-    if (!rec) return res.status(401).json({ error: "OTP not found or expired" });
+    const rec = await Otp.findOne({
+      phone,
+      used: { $ne: true },
+      expiresAt: { $gt: new Date() },
+    }).sort({ createdAt: -1 });
+    if (!rec)
+      return res.status(401).json({ error: "OTP not found or expired" });
 
     const hash = crypto.createHash("sha256").update(String(otp)).digest("hex");
     if (hash !== rec.codeHash) {
@@ -267,7 +288,8 @@ export async function verifyOtp(req, res) {
     const user = await User.findOne({ phone });
     if (!user) return res.status(401).json({ error: "User not found" });
 
-    const normalizedRole = user.role || mapLegacyRole(user.role_id) || "Student";
+    const normalizedRole =
+      user.role || mapLegacyRole(user.role_id) || "Student";
 
     // Issue access token
     const { token: accessToken, expMs: accessExpiresAt } = createAccessToken({
@@ -276,14 +298,31 @@ export async function verifyOtp(req, res) {
     });
 
     // Issue refresh token (rotation model)
-    const { raw: refreshRaw, tokenHash, expMs: refreshExpiresAt } = createRefreshToken();
+    const {
+      raw: refreshRaw,
+      tokenHash,
+      expMs: refreshExpiresAt,
+    } = createRefreshToken();
     const device = req.headers["user-agent"] || "unknown";
-    await RefreshToken.create({ userId: user._id, tokenHash, device, expiresAt: new Date(refreshExpiresAt) });
+    await RefreshToken.create({
+      userId: user._id,
+      tokenHash,
+      device,
+      expiresAt: new Date(refreshExpiresAt),
+    });
 
-    setAuthCookies(res, { accessToken, refreshToken: refreshRaw, accessExpiresAt, refreshExpiresAt });
+    setAuthCookies(res, {
+      accessToken,
+      refreshToken: refreshRaw,
+      accessExpiresAt,
+      refreshExpiresAt,
+    });
 
     // Get linked students for parent users
-    const linkedStudents = await getLinkedStudents(String(user._id), normalizedRole);
+    const linkedStudents = await getLinkedStudents(
+      String(user._id),
+      normalizedRole,
+    );
 
     const snapshot = {
       id: String(user._id),
@@ -295,7 +334,9 @@ export async function verifyOtp(req, res) {
     return res.status(200).json({ success: true, user: snapshot });
   } catch (err) {
     console.error("verifyOtp error:", err);
-    return res.status(500).json({ error: "Failed to verify OTP", details: err?.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to verify OTP", details: err?.message });
   }
 }
 
@@ -322,7 +363,7 @@ export async function refresh(req, res) {
       try {
         await RefreshToken.updateMany(
           { userId: recAny.userId, revoked: { $ne: true } },
-          { $set: { revoked: true, revokedAt: new Date() } }
+          { $set: { revoked: true, revokedAt: new Date() } },
         );
       } catch {}
       clearAuthCookies(res);
@@ -354,7 +395,9 @@ export async function refresh(req, res) {
     } = createRefreshToken();
     await RefreshToken.updateOne(
       { _id: rec._id },
-      { $set: { revoked: true, revokedAt: new Date(), lastUsedAt: new Date() } }
+      {
+        $set: { revoked: true, revokedAt: new Date(), lastUsedAt: new Date() },
+      },
     );
     await RefreshToken.create({
       userId: user._id,
@@ -388,7 +431,7 @@ export async function logout(req, res) {
         .digest("hex");
       await RefreshToken.updateOne(
         { tokenHash },
-        { $set: { revoked: true, revokedAt: new Date() } }
+        { $set: { revoked: true, revokedAt: new Date() } },
       );
     }
 
@@ -429,7 +472,7 @@ export async function revokeSession(req, res) {
     if (!id) return res.status(400).json({ error: "Missing session id" });
     const updated = await RefreshToken.updateOne(
       { _id: id, userId },
-      { $set: { revoked: true, revokedAt: new Date() } }
+      { $set: { revoked: true, revokedAt: new Date() } },
     );
     if (updated.matchedCount === 0)
       return res.status(404).json({ error: "Session not found" });
