@@ -51,7 +51,7 @@ const corsAllowList = (
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 if (!corsAllowList.length) {
-  corsAllowList.push("http://localhost:3000", "http://127.0.0.1:3000");
+  corsAllowList.push("http://localhost:3000", "https://cms-deploy-zz3t.onrender.com");
 }
 const corsOptions = {
   origin(origin, callback) {
