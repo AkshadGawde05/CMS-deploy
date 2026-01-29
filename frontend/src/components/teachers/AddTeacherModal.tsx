@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, User, Upload, GraduationCap, Briefcase } from 'lucide-react';
+import { X, User, Upload, GraduationCap, Briefcase, ChevronDown } from 'lucide-react';
 import { createTeacher, updateTeacher, getAllCourses, getAllBatches } from '@/lib/api';
 import type { CourseDTO, BatchDTO } from '@/lib/api';
 import axios from 'axios';
@@ -33,10 +33,8 @@ export default function AddTeacherModal({ teacher, onClose, onSuccess }: AddTeac
   const [loading, setLoading] = useState(false);
   const [courses, setCourses] = useState<CourseDTO[]>([]);
   const [batches, setBatches] = useState<BatchDTO[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
   const [completionPercentage, setCompletionPercentage] = useState(0);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isSubjectDropdownOpen, setIsSubjectDropdownOpen] = useState(false);
   const subjectDropdownRef = useRef<HTMLDivElement>(null);
   
@@ -95,8 +93,9 @@ export default function AddTeacherModal({ teacher, onClose, onSuccess }: AddTeac
     const requiredFields = ['fname', 'lname', 'email', 'phone'] as const;
     const optionalFields = ['dob', 'address', 'aadhar', 'pan_number', 'bank_account', 'highest_degree', 'salary'] as const;
     const allFields = [...requiredFields, ...optionalFields];
-    const filledFields = allFields.filter((field) => (formData as Record<string, unknown>)[field]).length + (formData.subjects.length > 0 ? 1 : 0);
-    const percentage = Math.round((filledFields / (allFields.length + 1)) * 100);
+    const filledFields = allFields.filter((field) => (formData as Record<string, unknown>)[field]).length;
+    const subjectsCount = formData.subjects.length > 0 ? 1 : 0;
+    const percentage = Math.round(((filledFields + subjectsCount) / (allFields.length + 1)) * 100);
     setCompletionPercentage(percentage);
   }, [formData]);
 
@@ -167,15 +166,6 @@ export default function AddTeacherModal({ teacher, onClose, onSuccess }: AddTeac
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubjectChange = (subject: string) => {
-    setFormData(prev => ({
-      ...prev,
-      subjects: prev.subjects.includes(subject)
-        ? prev.subjects.filter(s => s !== subject)
-        : [...prev.subjects, subject]
-    }));
   };
 
 const handleSubmit = async (e: React.FormEvent) => {
@@ -436,20 +426,85 @@ const handleSubmit = async (e: React.FormEvent) => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-black mb-1.5">
-                  Assign to Subjects <span className="text-red-500">*</span>
+                  Assign Subjects <span className="text-red-500">*</span>
                 </label>
-                <div className="space-y-2">
-                  {['Mathematics', 'Science', 'English', 'Physics', 'Chemistry', 'Biology'].map(subject => (
-                    <label key={subject} className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={formData.subjects.includes(subject)}
-                        onChange={() => handleSubjectChange(subject)}
-                        className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
-                      />
-                      <span className="ml-2 text-sm text-black">{subject}</span>
-                    </label>
-                  ))}
+                <div className="relative" ref={subjectDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsSubjectDropdownOpen(!isSubjectDropdownOpen)}
+                    className="w-full px-3 py-2 text-sm text-left border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all flex items-center justify-between"
+                  >
+                    <span className={formData.subjects.length > 0 ? 'text-black' : 'text-gray-500'}>
+                      {formData.subjects.length > 0 
+                        ? `${formData.subjects.length} subject${formData.subjects.length > 1 ? 's' : ''} selected`
+                        : availableSubjects.length === 0 ? 'No subjects available' : 'Select subjects'}
+                    </span>
+                    <ChevronDown 
+                      className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${isSubjectDropdownOpen ? 'transform rotate-180' : ''}`}
+                    />
+                  </button>
+                  
+                  {isSubjectDropdownOpen && availableSubjects.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+                      <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                        {availableSubjects.map((subject) => (
+                          <label
+                            key={subject}
+                            className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.subjects.includes(subject)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    subjects: [...prev.subjects, subject]
+                                  }));
+                                } else {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    subjects: prev.subjects.filter(s => s !== subject)
+                                  }));
+                                }
+                              }}
+                              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:ring-offset-0"
+                            />
+                            <span className="text-sm text-gray-700 flex-1">{subject}</span>
+                            {formData.subjects.includes(subject) && (
+                              <span className="text-xs text-blue-600 font-semibold">✓</span>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {formData.subjects.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {formData.subjects.map((subject) => (
+                        <span
+                          key={subject}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-md border border-blue-200 hover:bg-blue-100 transition-colors"
+                        >
+                          <span className="font-medium">{subject}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData(prev => ({
+                                ...prev,
+                                subjects: prev.subjects.filter(s => s !== subject)
+                              }));
+                            }}
+                            className="hover:text-blue-900 transition-colors"
+                            aria-label={`Remove ${subject}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <div>
