@@ -9,15 +9,14 @@ import ExcelJS from "exceljs";
 // Get syllabus for a batch
 export const getSyllabus = async (req, res) => {
   try {
-    const { batch_id, academic_year } = req.query;
+    const { batch_id, academic_year, course_id } = req.query; // Add course_id param
     const userId = req.user?.id;
-    const userRole = req.user?.role?.toLowerCase(); // Convert to lowercase for case-insensitive comparison
+    const userRole = req.user?.role?.toLowerCase();
 
     let query = {};
 
     // Authorization logic based on role
     if (userRole === "student") {
-      // Get student's batch
       const student = await Student.findOne({ user_id: userId });
       if (!student) {
         return res.status(403).json({
@@ -25,31 +24,24 @@ export const getSyllabus = async (req, res) => {
           message: "Student record not found",
         });
       }
-      // Force filter to student's batch only
       query.batch_id = student.batch_id;
     } else if (userRole === "parent") {
-      // Get parent's children's batches
       const parent = await Parent.findOne({ user_id: userId });
       if (!parent || !parent.student_id) {
-        // Parent has no linked student, return empty
         return res.json({
           success: true,
-          data: []
+          data: [],
         });
       }
-      // Get the student linked to this parent
       const student = await Student.findById(parent.student_id);
       if (!student || !student.batch_id) {
-        // Student not found or no batch assigned, return empty
         return res.json({
           success: true,
-          data: []
+          data: [],
         });
       }
-      // Parent can only see their child's batch syllabus
       query.batch_id = student.batch_id;
     } else if (userRole === "teacher") {
-      // Get teacher's assigned batches
       const teacher = await Teacher.findOne({ user_id: userId });
       if (!teacher) {
         return res.status(403).json({
@@ -57,7 +49,6 @@ export const getSyllabus = async (req, res) => {
           message: "Teacher record not found",
         });
       }
-      // If batch_id provided, verify teacher has access to it
       if (batch_id) {
         if (teacher.assigned_batches && teacher.assigned_batches.length > 0) {
           const hasAccess = teacher.assigned_batches.some(
@@ -71,34 +62,42 @@ export const getSyllabus = async (req, res) => {
           }
           query.batch_id = batch_id;
         } else {
-          // Teacher has no assigned batches
-          query.batch_id = { $in: [] }; // Return empty result
+          query.batch_id = { $in: [] };
         }
       } else {
-        // Return syllabi for all teacher's assigned batches
         if (teacher.assigned_batches && teacher.assigned_batches.length > 0) {
           query.batch_id = { $in: teacher.assigned_batches };
         } else {
-          query.batch_id = { $in: [] }; // Return empty result
+          query.batch_id = { $in: [] };
         }
       }
     } else if (userRole === "admin" || userRole === "superadmin") {
-      // Admins can access all syllabi, apply filters if provided
-      if (batch_id) query.batch_id = batch_id;
-      if (academic_year) query.academic_year = academic_year;
+      // Admins can access all syllabi
+      // ⭐ KEY FIX: Only filter by batch_id if explicitly provided
+      if (batch_id) {
+        query.batch_id = batch_id;
+      }
+      // ⭐ Add support for course_id filtering
+      if (course_id) {
+        query.course_id = course_id;
+      }
+      if (academic_year) {
+        query.academic_year = academic_year;
+      }
     } else {
-      // For any other authenticated user, return empty result instead of error
-      // This prevents breaking the page for users without specific roles
       query.batch_id = { $in: [] };
     }
 
-    if (academic_year) query.academic_year = academic_year;
+    // ⭐ IMPORTANT: If no batch_id specified for admin/superadmin, don't filter by it
+    // This allows viewing course-level syllabi (batch_id: null/undefined)
 
     const syllabi = await Syllabus.find(query)
       .populate("batch_id", "name course_id")
       .populate("course_id", "name")
-      .populate("created_by", "name email")
-      .populate("updated_by", "name email");
+      .populate("created_by", "fname lname email")
+      .populate("updated_by", "fname lname email");
+
+    console.log(`✅ Found ${syllabi.length} syllabi`);
 
     res.json({
       success: true,
@@ -119,7 +118,7 @@ export const getSyllabusById = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user?.id;
-    const userRole = req.user?.role?.toLowerCase(); // Convert to lowercase for case-insensitive comparison
+    const userRole = req.user?.role?.toLowerCase();
 
     const syllabus = await Syllabus.findById(id)
       .populate("batch_id", "name course_id")
@@ -224,7 +223,10 @@ export const createSyllabus = async (req, res) => {
     }
 
     // Check if syllabus already exists for this course and academic year
-    const existingSyllabus = await Syllabus.findOne({ course_id, academic_year });
+    const existingSyllabus = await Syllabus.findOne({
+      course_id,
+      academic_year,
+    });
     if (existingSyllabus) {
       return res.status(400).json({
         success: false,
@@ -233,7 +235,8 @@ export const createSyllabus = async (req, res) => {
     }
 
     // Handle empty batch_id string - convert to undefined so it doesn't try to cast empty string to ObjectId
-    const processedBatchId = batch_id && batch_id.trim() !== '' ? batch_id : undefined;
+    const processedBatchId =
+      batch_id && batch_id.trim() !== "" ? batch_id : undefined;
 
     const newSyllabus = new Syllabus({
       batch_id: processedBatchId,
@@ -484,62 +487,148 @@ export const deleteSyllabus = async (req, res) => {
   }
 };
 
-// Generate syllabus template
+// Generate syllabus template - CLIENT FORMAT with merged cells
 export const getSyllabusTemplate = async (req, res) => {
   try {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Syllabi");
+    const worksheet = workbook.addWorksheet("Syllabus");
 
-    // Define columns
+    // Define columns to match client format
     worksheet.columns = [
-      { header: "Batch ID *", key: "batch_id", width: 20 },
-      { header: "Course ID *", key: "course_id", width: 20 },
-      { header: "Academic Year *", key: "academic_year", width: 15 },
-      { header: "Subject *", key: "subject", width: 20 },
-      { header: "Topic *", key: "topic", width: 25 },
-      { header: "Subtopic", key: "subtopic", width: 25 },
-      { header: "Description", key: "description", width: 30 },
-      { header: "Duration (hours)", key: "duration_hours", width: 15 },
+      { header: "Course", key: "course", width: 12 },
+      { header: "Subject", key: "subject", width: 20 },
+      { header: "Unit", key: "unit", width: 10 },
+      { header: "Chapter No", key: "chapter", width: 12 },
+      { header: "Topic", key: "topic", width: 40 },
+      { header: "Subtopic", key: "subtopic", width: 100 },
     ];
 
-    // Style header
+    // Style header row
     worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     worksheet.getRow(1).fill = {
       type: "pattern",
       pattern: "solid",
       fgColor: { argb: "FF4472C4" },
     };
+    worksheet.getRow(1).alignment = {
+      vertical: "middle",
+      horizontal: "center",
+    };
 
-    // Add sample row
-    worksheet.addRow({
-      batch_id: "BATCH_ID_HERE",
-      course_id: "COURSE_ID_HERE",
-      academic_year: "2024-2025",
-      subject: "Mathematics",
-      topic: "Algebra Fundamentals",
-      subtopic: "Linear Equations",
-      description: "Introduction to basic algebra",
-      duration_hours: 2,
+    // Add sample data rows (matching client format)
+    const sampleRows = [
+      {
+        class: "11",
+        subject: "Physics",
+        unit: "1",
+        chapter: "1",
+        topic: "Basic Mathematics",
+        subtopic:
+          "Physics-scope and excitement; nature of physical laws; Physics, technology and society.",
+      },
+      {
+        class: "",
+        subject: "",
+        unit: "",
+        chapter: "2",
+        topic: "Units and Measurements",
+        subtopic:
+          "Need for measurement: Units of measurement; systems of units; SI units, fundamental and derived units. Length, mass and time measurements; accuracy and precision of measuring instruments; errors in measurement; significant figures.\nDimensions of physical quantities, dimensional analysis and its applications.",
+      },
+      {
+        class: "",
+        subject: "",
+        unit: "",
+        chapter: "3",
+        topic: "Motion in a Straight Line (1-D)",
+        subtopic:
+          "Frame of reference, Motion in a straight line: Position-time graph, speed and velocity.\nElementary concepts of differentiation and integration for describing motion, uniform and non- uniform motion, average speed and instantaneous velocity, uniformly accelerated motion, velocity - time and position-time graphs.\nRelations for uniformly accelerated motion (graphical treatment).",
+      },
+    ];
+
+    sampleRows.forEach((rowData) => {
+      worksheet.addRow(rowData);
     });
 
-    // Add notes sheet
+    // Apply merged cell styling for demonstration
+    // Merge Class cell for rows 2-4 (sample demonstration)
+    worksheet.mergeCells("A2:A4");
+    worksheet.getCell("A2").value = "11";
+    worksheet.getCell("A2").alignment = {
+      vertical: "middle",
+      horizontal: "center",
+    };
+
+    // Merge Subject cell for rows 2-4
+    worksheet.mergeCells("B2:B4");
+    worksheet.getCell("B2").value = "Physics";
+    worksheet.getCell("B2").alignment = {
+      vertical: "middle",
+      horizontal: "center",
+    };
+
+    // Merge Unit cell for rows 2-4
+    worksheet.mergeCells("C2:C4");
+    worksheet.getCell("C2").value = "1";
+    worksheet.getCell("C2").alignment = {
+      vertical: "middle",
+      horizontal: "center",
+    };
+
+    // Apply borders to all cells
+    worksheet.eachRow((row, rowNumber) => {
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+      });
+    });
+
+    // Set text wrap for subtopic column
+    worksheet.getColumn(6).alignment = { wrapText: true, vertical: "top" };
+
+    // Add instructions sheet
     const notesSheet = workbook.addWorksheet("Instructions");
     notesSheet.getCell("A1").value = "Syllabus Bulk Upload Instructions";
     notesSheet.getCell("A1").font = { bold: true, size: 14 };
 
-    notesSheet.getCell("A3").value = "Required Fields (marked with *)";
+    notesSheet.getCell("A3").value = "Template Format:";
     notesSheet.getCell("A3").font = { bold: true };
-    notesSheet.getCell("A4").value = "• Batch ID - Copy from batch records";
-    notesSheet.getCell("A5").value = "• Course ID - Copy from course records";
-    notesSheet.getCell("A6").value = "• Academic Year - Format like 2024-2025";
-    notesSheet.getCell("A7").value = "• Subject - Name of the subject";
-    notesSheet.getCell("A8").value = "• Topic - Topic name";
+    notesSheet.getCell("A4").value =
+      "• Course - Course/Class name (e.g., 11, 12, B.Tech, etc.)";
+    notesSheet.getCell("A5").value =
+      "• Subject - Subject name (e.g., Physics, Mathematics, etc.)";
+    notesSheet.getCell("A6").value = "• Unit - Unit number (e.g., 1, 2, 3)";
+    notesSheet.getCell("A7").value = "• Chapter No - Chapter number";
+    notesSheet.getCell("A8").value = "• Topic - Main topic name";
+    notesSheet.getCell("A9").value = "• Subtopic - Detailed content/subtopics";
 
-    notesSheet.getCell("A10").value = "Optional Fields";
-    notesSheet.getCell("A10").font = { bold: true };
-    notesSheet.getCell("A11").value = "• Subtopic - Sub-division of topic";
-    notesSheet.getCell("A12").value = "• Description - Additional notes";
-    notesSheet.getCell("A13").value = "• Duration (hours) - Number format";
+    notesSheet.getCell("A11").value = "Important Notes:";
+    notesSheet.getCell("A11").font = { bold: true };
+    notesSheet.getCell("A12").value =
+      "• The system will automatically handle merged cells";
+    notesSheet.getCell("A13").value =
+      "• You can leave Course, Subject, and Unit cells empty for continuation rows";
+    notesSheet.getCell("A14").value =
+      "• The Course name must exist in the system";
+    notesSheet.getCell("A15").value =
+      "• All topics will be grouped by Course and Academic Year automatically";
+    notesSheet.getCell("A16").value =
+      "• Duplicate entries (same Subject + Topic + Subtopic) will be skipped";
+
+    notesSheet.getCell("A18").value = "Example Structure:";
+    notesSheet.getCell("A18").font = { bold: true };
+    notesSheet.getCell("A19").value =
+      "Course | Subject | Unit | Chapter | Topic             | Subtopic";
+    notesSheet.getCell("A20").value =
+      "11    | Physics | 1    | 1       | Basic Math        | Introduction to...";
+    notesSheet.getCell("A21").value =
+      "      |         |      | 2       | Units & Measure   | Need for measurement...";
+    notesSheet.getCell("A22").value =
+      "      |         |      | 3       | Motion in Line    | Frame of reference...";
 
     notesSheet.getColumn("A").width = 80;
 
@@ -564,7 +653,7 @@ export const getSyllabusTemplate = async (req, res) => {
   }
 };
 
-// Bulk upload syllabi
+// Bulk upload syllabi - PRODUCTION-GRADE with merged cell handling
 export const bulkUploadSyllabi = async (req, res) => {
   try {
     if (!req.file) {
@@ -574,151 +663,382 @@ export const bulkUploadSyllabi = async (req, res) => {
       });
     }
 
-    const ExcelJS = require("exceljs");
-    const Course = require("../models/Course.js").default;
+    console.log("📤 Starting syllabus bulk upload...");
+    console.log("📁 File info:", {
+      filename: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+    });
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(req.file.buffer);
 
-    const worksheet = workbook.getWorksheet("Syllabi");
+    const worksheet = workbook.worksheets[0];
     if (!worksheet) {
       return res.status(400).json({
         success: false,
-        message: 'No "Syllabi" worksheet found in file',
+        message: "No worksheet found in file",
       });
     }
 
-    const successItems = [];
-    const failedItems = [];
+    // ==========================================
+    // PHASE 1: PARSE & NORMALIZE EXCEL ROWS
+    // ==========================================
+    const normalizedRows = [];
+    let currentCourse = null;
+    let currentSubject = null;
+    let currentUnit = null;
 
-    // Process each row
-    for (let idx = 2; idx <= worksheet.rowCount; idx++) {
-      const row = worksheet.getRow(idx);
+    console.log(`📊 Total rows in worksheet: ${worksheet.rowCount}`);
+    console.log(`📋 First 5 rows preview:`);
 
-      try {
-        const data = {
-          batch_id: row.getCell(1).value?.toString?.(),
-          course_id: row.getCell(2).value?.toString?.(),
-          academic_year: row.getCell(3).value?.toString?.(),
-          subject: row.getCell(4).value?.toString?.(),
-          topic: row.getCell(5).value?.toString?.(),
-          subtopic: row.getCell(6).value?.toString?.() || "",
-          description: row.getCell(7).value?.toString?.() || "",
-          duration_hours: parseInt(row.getCell(8).value) || 1,
-        };
+    // Preview first 5 rows to understand structure
+    for (let i = 1; i <= Math.min(5, worksheet.rowCount); i++) {
+      const previewRow = worksheet.getRow(i);
+      console.log(`   Row ${i}:`, {
+        A: previewRow.getCell(1).value,
+        B: previewRow.getCell(2).value,
+        C: previewRow.getCell(3).value,
+        D: previewRow.getCell(4).value,
+        E: previewRow.getCell(5).value,
+        F: previewRow.getCell(6).value
+          ? String(previewRow.getCell(6).value).substring(0, 30) + "..."
+          : null,
+      });
+    }
 
-        // Skip empty rows
-        if (!data.batch_id && !data.course_id) {
-          continue;
-        }
+    // Start from row 2 (skip header)
+    const startRow = 2;
 
-        // Validate required fields
-        if (!data.batch_id || !data.course_id || !data.academic_year) {
-          failedItems.push({
-            row: idx,
-            data,
-            error:
-              "Missing required fields (Batch ID, Course ID, or Academic Year)",
-          });
-          continue;
-        }
+    for (let rowNum = startRow; rowNum <= worksheet.rowCount; rowNum++) {
+      const row = worksheet.getRow(rowNum);
 
-        if (!data.subject || !data.topic) {
-          failedItems.push({
-            row: idx,
-            data,
-            error: "Missing subject or topic",
-          });
-          continue;
-        }
+      // Read cell values (Column A=1, B=2, etc.)
+      const cellCourse = row.getCell(1).value;
+      const cellSubject = row.getCell(2).value;
+      const cellUnit = row.getCell(3).value;
+      const cellChapterNo = row.getCell(4).value;
+      const cellTopic = row.getCell(5).value;
+      const cellSubtopic = row.getCell(6).value;
 
-        // Check if batch exists
-        const batch = await Batches.findById(data.batch_id);
-        if (!batch) {
-          failedItems.push({
-            row: idx,
-            data,
-            error: `Batch not found with ID: ${data.batch_id}`,
-          });
-          continue;
-        }
-
-        // Check if course exists
-        const course = await Course.findById(data.course_id);
-        if (!course) {
-          failedItems.push({
-            row: idx,
-            data,
-            error: `Course not found with ID: ${data.course_id}`,
-          });
-          continue;
-        }
-
-        // Check if syllabus already exists
-        const existing = await Syllabus.findOne({
-          batch_id: data.batch_id,
-          academic_year: data.academic_year,
-        });
-
-        if (existing) {
-          // Add item to existing syllabus
-          existing.items.push({
-            subject: data.subject,
-            topic: data.topic,
-            subtopic: data.subtopic,
-            description: data.description,
-            duration_hours: data.duration_hours,
-            created_at: new Date(),
-          });
-          await existing.save();
-
-          successItems.push({
-            row: idx,
-            batch_name: batch.name,
-            course_name: course.name,
-            academic_year: data.academic_year,
-            items_count: existing.items.length,
-            action: "Updated",
-          });
-        } else {
-          // Create new syllabus
-          const newSyllabus = new Syllabus({
-            batch_id: data.batch_id,
-            course_id: data.course_id,
-            academic_year: data.academic_year,
-            items: [
-              {
-                subject: data.subject,
-                topic: data.topic,
-                subtopic: data.subtopic,
-                description: data.description,
-                duration_hours: data.duration_hours,
-                created_at: new Date(),
-              },
-            ],
-            created_by: req.user?._id,
-            updated_by: req.user?._id,
-          });
-
-          await newSyllabus.save();
-
-          successItems.push({
-            row: idx,
-            batch_name: batch.name,
-            course_name: course.name,
-            academic_year: data.academic_year,
-            items_count: 1,
-            action: "Created",
-          });
-        }
-      } catch (error) {
-        failedItems.push({
-          row: idx,
-          data: {},
-          error: error.message,
+      if (rowNum <= 5 || rowNum % 20 === 0) {
+        console.log(`\n🔍 Row ${rowNum} raw values:`, {
+          course: cellCourse,
+          subject: cellSubject,
+          unit: cellUnit,
+          chapter: cellChapterNo,
+          topic: cellTopic,
+          subtopic: cellSubtopic
+            ? String(cellSubtopic).substring(0, 50) + "..."
+            : "",
         });
       }
+
+      // Context carry-forward: Update tracked values only when non-empty
+      if (cellCourse) {
+        currentCourse = String(cellCourse).trim();
+        console.log(`   ✅ Updated currentCourse: ${currentCourse}`);
+      }
+      if (cellSubject) {
+        currentSubject = String(cellSubject).trim();
+        console.log(`   ✅ Updated currentSubject: ${currentSubject}`);
+      }
+      if (cellUnit) {
+        currentUnit = String(cellUnit).trim();
+        console.log(`   ✅ Updated currentUnit: ${currentUnit}`);
+      }
+
+      // Skip row if no topic (empty row)
+      if (!cellTopic) {
+        console.log(`   ⏭️  Skipping row ${rowNum} - no topic`);
+        continue;
+      }
+
+      const topic = String(cellTopic).trim();
+      const subtopic = cellSubtopic ? String(cellSubtopic).trim() : "";
+
+      console.log(
+        `   📝 Using context: Course=${currentCourse}, Subject=${currentSubject}, Unit=${currentUnit}`,
+      );
+
+      // Normalize row data
+      normalizedRows.push({
+        rowNumber: rowNum,
+        course: currentCourse,
+        subject: currentSubject,
+        unit: currentUnit,
+        chapterNo: cellChapterNo ? String(cellChapterNo).trim() : "",
+        topic: topic,
+        subtopic: subtopic,
+      });
     }
+
+    console.log(`\n✅ Parsed ${normalizedRows.length} valid rows`);
+
+    if (normalizedRows.length === 0) {
+      return res.json({
+        success: true,
+        message: "No valid rows found to process",
+        results: { success: [], failed: [], total: 0 },
+      });
+    }
+
+    // ==========================================
+    // PHASE 2: VALIDATE & GROUP DATA
+    // ==========================================
+    const validRows = [];
+    const failedItems = [];
+
+    // Group by course (for batch processing)
+    const courseMap = new Map();
+
+    for (const row of normalizedRows) {
+      // Validate required fields
+      if (!row.course || !row.subject || !row.topic) {
+        console.log(`❌ Row ${row.rowNumber} validation failed:`, {
+          course: row.course,
+          subject: row.subject,
+          topic: row.topic,
+        });
+        failedItems.push({
+          row: row.rowNumber,
+          error: "Missing required fields (Course, Subject, or Topic)",
+          data: { course: row.course, subject: row.subject, topic: row.topic },
+        });
+        continue;
+      }
+
+      // Add to course map for grouped processing
+      if (!courseMap.has(row.course)) {
+        courseMap.set(row.course, []);
+      }
+      courseMap.get(row.course).push(row);
+      validRows.push(row);
+    }
+
+    console.log(
+      `\n✅ Validated: ${validRows.length} valid, ${failedItems.length} failed`,
+    );
+    console.log(
+      `📚 Found ${courseMap.size} unique courses:`,
+      Array.from(courseMap.keys()),
+    );
+
+    // ==========================================
+    // PHASE 3: PERSIST TO DATABASE
+    // ==========================================
+    const successItems = [];
+    const currentYear = new Date().getFullYear();
+    const academicYear = `${currentYear}-${currentYear + 1}`;
+
+    console.log(`\n📅 Using academic year: ${academicYear}`);
+    console.log(
+      `👤 Created by user: ${req.user?._id || "NOT SET - THIS IS A PROBLEM!"}`,
+    );
+
+    // Cache for DB lookups
+    const courseCache = new Map();
+    const syllabusCache = new Map();
+
+    for (const [courseName, courseRows] of courseMap.entries()) {
+      try {
+        console.log(
+          `\n\n🔄 Processing course: ${courseName} (${courseRows.length} items)`,
+        );
+
+        // ========== Lookup/Cache Course ==========
+        let course = courseCache.get(courseName);
+
+        if (!course) {
+          console.log(`   🔍 Looking up course: ${courseName}`);
+
+          // Try exact match first (case-insensitive)
+          course = await Course.findOne({
+            name: { $regex: new RegExp(`^${courseName}$`, "i") },
+          });
+
+          // If not found, try partial match (e.g., "11" matches "11 ICSE")
+          if (!course) {
+            console.log(`   🔍 Exact match not found, trying partial match...`);
+            course = await Course.findOne({
+              name: { $regex: new RegExp(`^${courseName}\\s`, "i") }, // "11 " matches "11 ICSE"
+            });
+          }
+
+          // If still not found, try if courseName is contained in the name
+          if (!course) {
+            console.log(
+              `   🔍 Partial match not found, trying contains match...`,
+            );
+            course = await Course.findOne({
+              name: { $regex: new RegExp(courseName, "i") }, // "11" matches "11 ICSE", "JEE 11", etc.
+            });
+          }
+
+          if (!course) {
+            console.log(`   ❌ Course not found: ${courseName}`);
+            // Course not found - fail all rows for this course
+            for (const row of courseRows) {
+              failedItems.push({
+                row: row.rowNumber,
+                error: `Course not found: "${courseName}". Available courses: ${Array.from(courseCache.keys()).join(", ") || "Check /api/courses"}`,
+                data: { course: courseName },
+              });
+            }
+            continue;
+          }
+
+          console.log(`   ✅ Found course:`, {
+            id: course._id,
+            name: course.name,
+            matchType: course.name === courseName ? "exact" : "partial",
+          });
+          courseCache.set(courseName, course);
+        } else {
+          console.log(`   📋 Using cached course: ${course.name}`);
+        }
+
+        // ========== Lookup/Create Syllabus ==========
+        let syllabus = syllabusCache.get(course._id.toString());
+
+        if (!syllabus) {
+          console.log(
+            `   🔍 Looking up syllabus for course ${course._id}, year ${academicYear}`,
+          );
+          syllabus = await Syllabus.findOne({
+            course_id: course._id,
+            academic_year: academicYear,
+          });
+
+          if (!syllabus) {
+            console.log(`   🆕 Creating new syllabus`);
+
+            // Check if req.user exists
+            if (!req.user || !req.user.id) {
+              console.error(
+                `   ❌ CRITICAL: req.user or req.user.id is missing!`,
+              );
+              throw new Error("User authentication required");
+            }
+
+            syllabus = new Syllabus({
+              course_id: course._id,
+              academic_year: academicYear,
+              items: [],
+              created_by: req.user.id,
+            });
+            console.log(`   ✅ New syllabus created (not saved yet)`);
+          } else {
+            console.log(
+              `   ✅ Found existing syllabus with ${syllabus.items.length} items`,
+            );
+          }
+
+          syllabusCache.set(course._id.toString(), syllabus);
+        }
+
+        // ========== Build unique key set for deduplication ==========
+        const existingKeys = new Set(
+          syllabus.items.map(
+            (item) => `${item.subject}|||${item.topic}|||${item.subtopic}`,
+          ),
+        );
+
+        console.log(`   📊 Existing unique items: ${existingKeys.size}`);
+
+        // ========== Add items (with deduplication) ==========
+        let addedCount = 0;
+        let skippedCount = 0;
+
+        for (const row of courseRows) {
+          const uniqueKey = `${row.subject}|||${row.topic}|||${row.subtopic}`;
+
+          // Skip if duplicate
+          if (existingKeys.has(uniqueKey)) {
+            console.log(
+              `   ⏭️  Row ${row.rowNumber}: Duplicate - ${row.topic}`,
+            );
+            skippedCount++;
+
+            successItems.push({
+              row: row.rowNumber,
+              course_name: course.name,
+              subject: row.subject,
+              topic: row.topic,
+              academic_year: academicYear,
+              action: "Skipped (Duplicate)",
+            });
+            continue;
+          }
+
+          // Add new item
+          const newItem = {
+            subject: row.subject,
+            topic: row.topic,
+            subtopic: row.subtopic,
+            description: row.unit
+              ? `Unit ${row.unit}${row.chapterNo ? ` - Chapter ${row.chapterNo}` : ""}`
+              : "",
+            duration_hours: 2,
+            created_at: new Date(),
+          };
+
+          console.log(`   ➕ Adding item: ${row.topic}`);
+          syllabus.items.push(newItem);
+          existingKeys.add(uniqueKey);
+          addedCount++;
+
+          successItems.push({
+            row: row.rowNumber,
+            course_name: course.name,
+            subject: row.subject,
+            topic: row.topic,
+            academic_year: academicYear,
+            action: syllabus.items.length === 1 ? "Created" : "Added",
+          });
+        }
+
+        // ========== Save syllabus ==========
+        if (addedCount > 0) {
+          console.log(`   💾 Saving syllabus with ${addedCount} new items...`);
+          syllabus.updated_at = new Date();
+          syllabus.updated_by = req.user?.id;
+
+          const savedSyllabus = await syllabus.save();
+          console.log(
+            `   ✅ Syllabus saved successfully! ID: ${savedSyllabus._id}`,
+          );
+          console.log(
+            `   📊 Total items in syllabus: ${savedSyllabus.items.length}`,
+          );
+        } else {
+          console.log(
+            `   ⏭️  No new items to save (${skippedCount} duplicates)`,
+          );
+        }
+      } catch (error) {
+        console.error(`\n💥 Error processing course ${courseName}:`, error);
+        console.error("Stack trace:", error.stack);
+
+        // Fail all rows for this course
+        for (const row of courseRows) {
+          failedItems.push({
+            row: row.rowNumber,
+            error: `Database error: ${error.message}`,
+            data: { course: courseName, subject: row.subject },
+          });
+        }
+      }
+    }
+
+    // ==========================================
+    // PHASE 4: RETURN SUMMARY
+    // ==========================================
+    console.log("\n\n📊 ========== UPLOAD SUMMARY ==========");
+    console.log(`   ✅ Success: ${successItems.length}`);
+    console.log(`   ❌ Failed: ${failedItems.length}`);
+    console.log(`   📝 Total: ${successItems.length + failedItems.length}`);
+    console.log("=========================================\n");
 
     res.json({
       success: true,
@@ -730,7 +1050,8 @@ export const bulkUploadSyllabi = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in bulk upload:", error);
+    console.error("\n💥 CRITICAL BULK UPLOAD ERROR:", error);
+    console.error("Stack trace:", error.stack);
     res.status(500).json({
       success: false,
       message: "Failed to process bulk upload",
