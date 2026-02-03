@@ -13,20 +13,8 @@ interface RolePermissions {
   updated_at: string;
 }
 
-const PERMISSION_GROUPS = {
-  "Marks": ["canViewMarks", "canEditMarks"] as (keyof UserPermissions)[],
-  "Attendance": ["canViewAttendance", "canEditAttendance"] as (keyof UserPermissions)[],
-  "Reports": ["canViewReports", "canEditReports"] as (keyof UserPermissions)[],
-  "Materials": ["canViewMaterials", "canUploadMaterials"] as (keyof UserPermissions)[],
-  "Announcements": ["canViewAnnouncements", "canCreateAnnouncements"] as (keyof UserPermissions)[],
-  "Users": ["canViewUsers", "canEditUsers"] as (keyof UserPermissions)[],
-  "Courses": ["canViewCourses", "canEditCourses"] as (keyof UserPermissions)[],
-  "Batches": ["canViewBatches", "canEditBatches"] as (keyof UserPermissions)[],
-  "Students": ["canViewStudents", "canEditStudents"] as (keyof UserPermissions)[],
-  "Teachers": ["canViewTeachers", "canEditTeachers"] as (keyof UserPermissions)[],
-  "Parents": ["canViewParents", "canEditParents"] as (keyof UserPermissions)[],
-  "Accounts": ["canViewAccounts", "canEditAccounts"] as (keyof UserPermissions)[],
-  "Exams": ["canViewExams", "canEditExams"] as (keyof UserPermissions)[],
+type PermissionGroups = {
+  [key: string]: (keyof UserPermissions)[];
 };
 
 const ROLE_COLORS = {
@@ -38,6 +26,7 @@ const ROLE_COLORS = {
 
 export default function PermissionsPage() {
   const [rolePermissions, setRolePermissions] = useState<RolePermissions[]>([]);
+  const [permissionGroups, setPermissionGroups] = useState<PermissionGroups>({});
   const [loading, setLoading] = useState(true);
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [editPermissions, setEditPermissions] = useState<UserPermissions | null>(null);
@@ -45,10 +34,28 @@ export default function PermissionsPage() {
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchRolePermissions() {
+    async function fetchData() {
       try {
+        // Fetch permission groups
+        const groupsUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/roles/permission-groups`;
+        console.log('Fetching permission groups from:', groupsUrl);
+        const groupsResponse = await fetch(groupsUrl, {
+          credentials: "include",
+        });
+        
+        if (!groupsResponse.ok) {
+          const errorData = await groupsResponse.json().catch(() => ({}));
+          console.error('API error:', errorData);
+          throw new Error(errorData.message || "Failed to fetch permission groups");
+        }
+        
+        const groupsData = await groupsResponse.json();
+        console.log('Received permission groups:', groupsData);
+        setPermissionGroups(groupsData.permissionGroups || {});
+
+        // Fetch role permissions
         const url = `${process.env.NEXT_PUBLIC_API_URL}/api/roles/permissions`;
-        console.log('Fetching permissions from:', url);
+        console.log('Fetching role permissions from:', url);
         const response = await fetch(url, {
           credentials: "include",
         });
@@ -62,13 +69,13 @@ export default function PermissionsPage() {
         console.log('Received data:', data);
         setRolePermissions(data.roles || []);
       } catch (error) {
-        console.error("Error fetching role permissions:", error);
-        showToast("Failed to load role permissions: " + (error as Error).message);
+        console.error("Error fetching data:", error);
+        showToast("Failed to load permissions: " + (error as Error).message);
       } finally {
         setLoading(false);
       }
     }
-    fetchRolePermissions();
+    fetchData();
   }, []);
 
   const showToast = (message: string) => {
@@ -224,18 +231,18 @@ export default function PermissionsPage() {
 
                       {/* Permissions Grid */}
                     <div className="p-3 sm:p-4 space-y-3 max-h-[400px] sm:max-h-[500px] overflow-y-auto">
-                      {Object.entries(PERMISSION_GROUPS).map(([groupName, permissions]) => (
+                      {Object.entries(permissionGroups).map(([groupName, permissions]) => (
                         <div key={groupName}>
                           <h4 className="text-xs sm:text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
                               <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
                               {groupName}
                             </h4>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 ml-4">
-                              {permissions.map(permission => {
+                              {permissions.map((permission) => {
                                 const isEditing = editingRole === roleData.role;
                                 const isEnabled = isEditing
-                                  ? editPermissions?.[permission] || false
-                                  : roleData.permissions?.[permission] || false;
+                                  ? editPermissions?.[permission as keyof UserPermissions] || false
+                                  : roleData.permissions?.[permission as keyof UserPermissions] || false;
 
                                 return (
                                   <label
@@ -249,7 +256,7 @@ export default function PermissionsPage() {
                                     <input
                                       type="checkbox"
                                       checked={isEnabled}
-                                      onChange={() => isEditing && handlePermissionToggle(permission)}
+                                      onChange={() => isEditing && handlePermissionToggle(permission as keyof UserPermissions)}
                                       disabled={!isEditing}
                                       className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer flex-shrink-0"
                                     />

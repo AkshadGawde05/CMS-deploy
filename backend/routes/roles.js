@@ -4,6 +4,23 @@ import { verifyAuth } from '../middlewares/jwtAuth.js';
 
 const router = express.Router();
 
+// Define permission groups
+const PERMISSION_GROUPS = {
+  "Marks": ["canViewMarks", "canEditMarks"],
+  "Attendance": ["canViewAttendance", "canEditAttendance"],
+  "Reports": ["canViewReports", "canEditReports"],
+  "Materials": ["canViewMaterials", "canUploadMaterials"],
+  "Announcements": ["canViewAnnouncements", "canCreateAnnouncements"],
+  "Users": ["canViewUsers", "canEditUsers"],
+  "Courses": ["canViewCourses", "canEditCourses"],
+  "Batches": ["canViewBatches", "canEditBatches"],
+  "Students": ["canViewStudents", "canEditStudents"],
+  "Teachers": ["canViewTeachers", "canEditTeachers"],
+  "Parents": ["canViewParents", "canEditParents"],
+  "Accounts": ["canViewAccounts", "canEditAccounts"],
+  "Exams": ["canViewExams", "canEditExams"],
+};
+
 // Middleware to ensure only SuperAdmin can access these routes
 const isSuperAdmin = (req, res, next) => {
   if (req.user && req.user.role === 'SuperAdmin') {
@@ -12,6 +29,17 @@ const isSuperAdmin = (req, res, next) => {
     return res.status(403).json({ success: false, message: 'Access denied. SuperAdmin only.' });
   }
 };
+
+// GET /api/roles/permission-groups - Get all permission groups
+router.get('/permission-groups', verifyAuth, isSuperAdmin, async (req, res) => {
+  try {
+    console.log('📋 Fetching permission groups...');
+    res.json({ success: true, permissionGroups: PERMISSION_GROUPS });
+  } catch (error) {
+    console.error('❌ Error fetching permission groups:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch permission groups', error: error.message });
+  }
+});
 
 // GET /api/roles/permissions - Get all role permissions
 router.get('/permissions', verifyAuth, isSuperAdmin, async (req, res) => {
