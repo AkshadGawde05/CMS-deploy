@@ -5590,6 +5590,9 @@ app.put("/api/roles/:role/permissions", verifyAuth, async (req, res) => {
     const { role } = req.params;
     const { permissions } = req.body;
 
+    console.log('🔄 Updating role permissions:', role);
+    console.log('📤 Permissions:', permissions);
+
     if (!permissions) {
       return res.status(400).json({
         success: false,
@@ -5612,10 +5615,12 @@ app.put("/api/roles/:role/permissions", verifyAuth, async (req, res) => {
       { new: true, upsert: true },
     );
 
+    console.log('✅ Updated role:', updatedRole);
+
     res.json({
       success: true,
       message: `${role} permissions updated successfully`,
-      role: updatedRole,
+      rolePermissions: updatedRole,
     });
   } catch (err) {
     console.error("Error updating role permissions:", err);

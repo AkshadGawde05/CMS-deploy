@@ -31,46 +31,26 @@ export default function PermissionsPage() {
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [editPermissions, setEditPermissions] = useState<UserPermissions | null>(null);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        // Fetch permission groups
-        const groupsUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/roles/permission-groups`;
-        console.log('Fetching permission groups from:', groupsUrl);
-        const groupsResponse = await fetch(groupsUrl, {
-          credentials: "include",
-        });
-        
-        if (!groupsResponse.ok) {
-          const errorData = await groupsResponse.json().catch(() => ({}));
-          console.error('API error:', errorData);
-          throw new Error(errorData.message || "Failed to fetch permission groups");
-        }
-        
-        const groupsData = await groupsResponse.json();
-        console.log('Received permission groups:', groupsData);
+        const groupsRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/roles/permission-groups`,
+          { credentials: "include" }
+        );
+        const groupsData = await groupsRes.json();
         setPermissionGroups(groupsData.permissionGroups || {});
 
-        // Fetch role permissions
-        const url = `${process.env.NEXT_PUBLIC_API_URL}/api/roles/permissions`;
-        console.log('Fetching role permissions from:', url);
-        const response = await fetch(url, {
-          credentials: "include",
-        });
-        console.log('Response status:', response.status);
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('API error:', errorData);
-          throw new Error(errorData.message || "Failed to fetch role permissions");
-        }
-        const data = await response.json();
-        console.log('Received data:', data);
-        setRolePermissions(data.roles || []);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-        showToast("Failed to load permissions: " + (error as Error).message);
+        const rolesRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/roles/permissions`,
+          { credentials: "include" }
+        );
+        const rolesData = await rolesRes.json();
+        setRolePermissions(rolesData.roles || []);
+      } catch (err) {
+        showToast("Failed to load permissions", "error");
       } finally {
         setLoading(false);
       }
@@ -78,10 +58,15 @@ export default function PermissionsPage() {
     fetchData();
   }, []);
 
-  const showToast = (message: string) => {
-    setToast(message);
+  const showToast = (message: string, type: "success" | "error") => {
+    setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
+
+  const getAllowedPermissionKeys = (): (keyof UserPermissions)[] => {
+    return Object.values(permissionGroups).flat();
+  };
+
 
   const handleEditClick = (role: RolePermissions) => {
     setEditingRole(role.role);
@@ -106,31 +91,52 @@ export default function PermissionsPage() {
 
     setSaving(true);
     try {
+      const allowedKeys = getAllowedPermissionKeys();
+
+      // 🔥 FILTER OUT INVALID PERMISSIONS
+      const filteredPermissions = Object.fromEntries(
+        Object.entries(editPermissions).filter(([key]) =>
+          allowedKeys.includes(key as keyof UserPermissions)
+        )
+      );
+
+      if (Object.keys(filteredPermissions).length === 0) {
+        showToast("No valid permissions to update", "error");
+        setSaving(false);
+        return;
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/roles/${editingRole}/permissions`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ permissions: editPermissions }),
+          body: JSON.stringify({ permissions: filteredPermissions }),
         }
       );
 
-      if (!response.ok) throw new Error("Failed to update permissions");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Update failed");
 
       // Update local state
-      setRolePermissions(rolePermissions.map(r => 
-        r.role === editingRole 
-          ? { ...r, permissions: editPermissions, updated_at: new Date().toISOString() }
-          : r
-      ));
+      setRolePermissions(prev =>
+        prev.map(r =>
+          r.role === editingRole
+            ? {
+                ...r,
+                permissions: data.rolePermissions.permissions,
+                updated_at: data.rolePermissions.updated_at,
+              }
+            : r
+        )
+      );
 
       setEditingRole(null);
       setEditPermissions(null);
-      showToast(`${editingRole} permissions updated successfully`);
-    } catch (error) {
-      console.error("Error updating permissions:", error);
-      showToast("Failed to update permissions");
+      showToast("Permissions updated successfully", "success");
+    } catch (err: any) {
+      showToast(err.message || "Update failed", "error");
     } finally {
       setSaving(false);
     }
@@ -143,146 +149,171 @@ export default function PermissionsPage() {
         <Navbar />
         
         <main className="lg:ml-64 pt-16 px-3 sm:px-4 lg:px-6 pb-6">
-          <div className="max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="mb-4 sm:mb-6">
-              <div className="flex items-center gap-2 sm:gap-3 mb-2">
-                <Shield className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-indigo-600 flex-shrink-0" />
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Role-Based Permissions</h1>
-              </div>
-              <p className="text-gray-600 text-xs sm:text-sm">
-                Configure permissions for each role. All users with the same role will inherit these permissions.
-              </p>
-            </div>
+  <div className="max-w-7xl mx-auto">
 
-            {/* Toast Notification */}
-            {toast && (
-              <div className="fixed top-20 right-4 bg-green-500 text-white px-4 py-2 sm:px-6 sm:py-3 rounded-lg shadow-lg z-50 text-sm sm:text-base">
-                {toast}
-              </div>
-            )}
+    {/* Header */}
+    <div className="mb-4 sm:mb-6">
+      <div className="flex items-center gap-2 sm:gap-3 mb-2">
+        <Shield className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-indigo-600 flex-shrink-0" />
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
+          Role-Based Permissions
+        </h1>
+      </div>
+      <p className="text-gray-600 text-xs sm:text-sm">
+        Configure permissions for each role. All users with the same role will inherit these permissions.
+      </p>
+    </div>
 
-            {/* Role Cards Grid */}
-            {loading ? (
-              <div className="flex items-center justify-center py-20">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-              </div>
-            ) : rolePermissions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-lg shadow">
-                <Shield className="w-16 h-16 text-gray-300 mb-4" />
-                <p className="text-gray-500 text-lg mb-2">No role permissions found</p>
-                <p className="text-gray-400 text-sm">Role permissions will be created automatically on first access</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {rolePermissions.map(roleData => (
-                    <div 
-                      key={roleData.role} 
-                      className={`bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow border-2 ${
-                        editingRole === roleData.role ? 'border-indigo-500' : 'border-transparent'
-                      }`}
+    {/* Toast */}
+    {toast && (
+      <div
+        className={`fixed top-20 right-4 z-50 px-4 py-2 sm:px-6 sm:py-3 rounded-lg shadow-lg text-sm sm:text-base text-white
+        ${toast.type === "success" ? "bg-green-500" : "bg-red-500"}`}
+      >
+        {toast.message || toast}
+      </div>
+    )}
+
+    {/* Loading */}
+    {loading ? (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    ) : rolePermissions.length === 0 ? (
+      <div className="flex flex-col items-center justify-center py-20 bg-white rounded-lg shadow">
+        <Shield className="w-16 h-16 text-gray-300 mb-4" />
+        <p className="text-gray-500 text-lg mb-2">No role permissions found</p>
+        <p className="text-gray-400 text-sm">
+          Role permissions will be created automatically on first access
+        </p>
+      </div>
+    ) : (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {rolePermissions.map(role => {
+          const enabledCount = Object.values(role.permissions).filter(Boolean).length;
+          const totalCount = Object.keys(role.permissions).length;
+
+          return (
+            <div
+              key={role.role}
+              className={`bg-white rounded-xl shadow-md hover:shadow-lg transition border-2
+                ${editingRole === role.role ? "border-indigo-500" : "border-transparent"}`}
+            >
+
+              {/* Card Header */}
+              <div
+                className={`p-4 lg:p-5 border-b-2 border-gray-100
+                  ${editingRole === role.role ? "bg-indigo-50" : ""}`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                    <span
+                      className={`px-3 py-1.5 lg:px-4 lg:py-2 rounded-lg font-semibold text-base lg:text-lg border-2
+                        ${ROLE_COLORS[role.role as keyof typeof ROLE_COLORS]} w-fit`}
                     >
-                      {/* Card Header */}
-                      <div className={`p-4 lg:p-5 border-b-2 border-gray-100 ${
-                        editingRole === roleData.role ? 'bg-indigo-50' : ''
-                      }`}>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                            <span className={`px-3 py-1.5 lg:px-4 lg:py-2 rounded-lg font-semibold text-base lg:text-lg border-2 ${
-                              ROLE_COLORS[roleData.role as keyof typeof ROLE_COLORS]
-                            } w-fit`}>
-                              {roleData.role}
-                            </span>
-                            <span className="text-xs lg:text-sm text-gray-500">
-                              {Object.values(roleData.permissions).filter(Boolean).length} / {Object.keys(roleData.permissions).length} enabled
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {editingRole === roleData.role ? (
-                              <>
-                                <button
-                                  onClick={handleSavePermissions}
-                                  disabled={saving}
-                                  className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition text-sm lg:text-base"
-                                >
-                                  <Save size={16} className="lg:w-[18px] lg:h-[18px]" />
-                                  {saving ? "Saving..." : "Save"}
-                                </button>
-                                <button
-                                  onClick={handleCancelEdit}
-                                  disabled={saving}
-                                  className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 disabled:opacity-50 transition text-sm lg:text-base"
-                                >
-                                  <X size={16} className="lg:w-[18px] lg:h-[18px]" />
-                                  Cancel
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => handleEditClick(roleData)}
-                                className="px-3 py-2 lg:px-4 lg:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm lg:text-base"
-                              >
-                                Edit Permissions
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                      {role.role}
+                    </span>
+                    <span className="text-xs lg:text-sm text-gray-500">
+                      {enabledCount} / {totalCount} enabled
+                    </span>
+                  </div>
 
-                      {/* Permissions Grid */}
-                    <div className="p-3 sm:p-4 space-y-3 max-h-[400px] sm:max-h-[500px] overflow-y-auto">
-                      {Object.entries(permissionGroups).map(([groupName, permissions]) => (
-                        <div key={groupName}>
-                          <h4 className="text-xs sm:text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                              <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
-                              {groupName}
-                            </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 ml-4">
-                              {permissions.map((permission) => {
-                                const isEditing = editingRole === roleData.role;
-                                const isEnabled = isEditing
-                                  ? editPermissions?.[permission as keyof UserPermissions] || false
-                                  : roleData.permissions?.[permission as keyof UserPermissions] || false;
+                  <div className="flex gap-2 flex-wrap">
+                    {editingRole === role.role ? (
+                      <>
+                        <button
+                          onClick={handleSavePermissions}
+                          disabled={saving}
+                          className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition text-sm"
+                        >
+                          <Save size={16} />
+                          {saving ? "Saving..." : "Save"}
+                        </button>
 
-                                return (
-                                  <label
-                                    key={permission}
-                                    className={`flex items-center space-x-2 p-2 rounded-lg border-2 transition ${
-                                      isEditing 
-                                        ? 'cursor-pointer hover:bg-indigo-50 border-transparent hover:border-indigo-200' 
-                                        : 'border-transparent'
-                                    } ${isEnabled ? 'bg-gray-50' : ''} min-w-0`}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isEnabled}
-                                      onChange={() => isEditing && handlePermissionToggle(permission as keyof UserPermissions)}
-                                      disabled={!isEditing}
-                                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer flex-shrink-0"
-                                    />
-                                    <span className={`text-xs lg:text-sm ${isEnabled ? 'text-gray-900 font-medium' : 'text-gray-600'} truncate`}>
-                                      {permission.replace(/^can/, "").replace(/([A-Z])/g, " $1").trim()}
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Card Footer */}
-                    <div className="px-3 sm:px-4 py-2 bg-gray-50 border-t border-gray-200 rounded-b-lg">
-                        <p className="text-xs text-gray-500 truncate">
-                          Last updated: {new Date(roleData.updated_at).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                        <button
+                          onClick={handleCancelEdit}
+                          disabled={saving}
+                          className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 disabled:opacity-50 transition text-sm"
+                        >
+                          <X size={16} />
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleEditClick(role)}
+                        className="px-3 py-2 lg:px-4 lg:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm"
+                      >
+                        Edit Permissions
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
+
+              {/* Permissions */}
+              <div className="p-3 sm:p-4 space-y-3 max-h-[400px] sm:max-h-[500px] overflow-y-auto">
+                {Object.entries(permissionGroups).map(([group, perms]) => (
+                  <div key={group}>
+                    <h4 className="text-xs sm:text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
+                      {group}
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 ml-4">
+                      {perms.map(p => {
+                        const isEditing = editingRole === role.role;
+                        const isChecked = isEditing
+                          ? editPermissions?.[p as keyof UserPermissions] || false
+                          : role.permissions[p as keyof UserPermissions] || false;
+
+                        return (
+                          <label
+                            key={p}
+                            className={`flex items-center gap-2 p-2 rounded-lg border-2 transition min-w-0
+                              ${isEditing ? "cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 border-transparent" : "border-transparent"}
+                              ${isChecked ? "bg-gray-50" : ""}`}
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={!isEditing}
+                              checked={isChecked}
+                              onChange={() =>
+                                isEditing && handlePermissionToggle(p as keyof UserPermissions)
+                              }
+                              className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                            />
+                            <span
+                              className={`text-xs lg:text-sm truncate
+                                ${isChecked ? "text-gray-900 font-medium" : "text-gray-600"}`}
+                            >
+                              {p.replace(/^can/, "").replace(/([A-Z])/g, " $1").trim()}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Footer */}
+              <div className="px-3 sm:px-4 py-2 bg-gray-50 border-t border-gray-200 rounded-b-xl">
+                <p className="text-xs text-gray-500 truncate">
+                  Last updated: {new Date(role.updated_at).toLocaleString()}
+                </p>
+              </div>
+
             </div>
-          </main>
+          );
+        })}
+      </div>
+    )}
+  </div>
+</main>
+
       </div>
     </ProtectedRoute>
   );
