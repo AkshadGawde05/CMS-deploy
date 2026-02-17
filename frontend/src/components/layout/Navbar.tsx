@@ -3,6 +3,7 @@ import { Bell, Settings, LogOut } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/components/auth/AuthProvider";
+import BranchSelector from "@/components/branch/BranchSelector";
 import { useState } from "react";
 
 export default function Navbar() {
@@ -12,7 +13,7 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
-    
+
     if (confirm("Are you sure you want to logout?")) {
       setIsLoggingOut(true);
       try {
@@ -47,18 +48,21 @@ export default function Navbar() {
       <div className="h-full px-16 lg:px-6 flex items-center justify-between">
         <h1 className="text-lg lg:text-xl font-semibold text-[#111827]">{getPageTitle(pathname)}</h1>
         <div className="flex items-center">
+          <div className="mr-4">
+            <BranchSelector />
+          </div>
           <button className="p-2 hover:bg-[#F9FAFB] rounded-full text-gray-400 transition-colors hidden sm:block">
             <Bell size={22} />
           </button>
           <div className="flex items-center gap-2 lg:gap-3 ml-4">
-              <Image
-                src="/avatar.jpg"
-                alt={user?.name || "User"}
-                width={32}
-                height={32}
-                style={{ borderRadius: "50%", objectFit: "cover" }}
-                priority
-              />
+            <Image
+              src="/avatar.jpg"
+              alt={user?.name || "User"}
+              width={32}
+              height={32}
+              style={{ borderRadius: "50%", objectFit: "cover" }}
+              priority
+            />
             <div className="hidden sm:block">
               <div className="font-medium text-sm lg:text-base text-[#374151]">
                 {user?.name || user?.email || "User"}
@@ -66,17 +70,17 @@ export default function Navbar() {
               <div className="text-xs text-gray-500">{user?.role || "User"}</div>
             </div>
             <svg width="20" height="20" fill="none" className="text-gray-400 hidden sm:block">
-              <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
           <div className="hidden sm:flex items-center ml-4">
-            <button 
+            <button
               className="p-2 hover:bg-[#F9FAFB] rounded-full text-gray-400 transition-colors"
               title="Settings"
             >
               <Settings size={22} />
             </button>
-            <button 
+            <button
               onClick={handleLogout}
               disabled={isLoggingOut}
               className="p-2 hover:bg-red-50 rounded-full text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

@@ -35,6 +35,18 @@ const UserSchema = new mongoose.Schema(
       batchId: { type: mongoose.Schema.Types.ObjectId, ref: "Batches" },
     },
 
+    // Multi-branch support
+    branches: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Branch",
+      },
+    ],
+    primaryBranch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+    },
+
     // NEW: Biomax enrollment / device user id (works for Student + Teacher)
     device_user_id: {
       type: String,

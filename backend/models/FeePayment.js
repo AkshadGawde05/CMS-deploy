@@ -2,6 +2,12 @@ import mongoose from "mongoose";
 import Counter from "./Counter.js";
 
 const FeePaymentSchema = new mongoose.Schema({
+  branchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    required: false, // Will be set to true after migration
+    index: true,
+  },
   student_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Student",
@@ -71,5 +77,9 @@ FeePaymentSchema.pre("save", async function (next) {
     next(e);
   }
 });
+
+// Branch-scoped index
+FeePaymentSchema.index({ branchId: 1, student_id: 1 });
+FeePaymentSchema.index({ branchId: 1, paid_date: -1 });
 
 export default mongoose.model("FeePayment", FeePaymentSchema);

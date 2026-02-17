@@ -7,6 +7,12 @@ const StudentSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  branchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    required: false, // Will be set to true after migration
+    index: true,
+  },
   course_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Course",
@@ -120,6 +126,10 @@ StudentSchema.pre("save", function (next) {
 
 // Index to speed up queries that group/count students by course
 StudentSchema.index({ course_id: 1 }, { name: "course_id_idx" });
+
+// Compound index for branch-scoped queries
+StudentSchema.index({ branchId: 1, course_id: 1 }, { name: "branch_course_idx" });
+StudentSchema.index({ branchId: 1, batch_id: 1 }, { name: "branch_batch_idx" });
 
 const Student = mongoose.model("Student", StudentSchema);
 export default Student;

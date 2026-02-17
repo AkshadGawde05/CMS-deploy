@@ -52,9 +52,22 @@ export interface LectureDTO {
 }
 
 // Centralized Axios instance so we can later add interceptors (auth, logging, etc.)
-const api = axios.create({
+export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000",
   withCredentials: true,
+});
+
+// Request interceptor to add X-Branch-Id header if selected
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const branchId = localStorage.getItem('selectedBranchId');
+    if (branchId) {
+      config.headers['X-Branch-Id'] = branchId;
+    }
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 export interface HealthResponse {
@@ -153,7 +166,7 @@ export async function verifyOtp(phone: string, otp: string) {
 
 export type MeResponse = {
   success: boolean;
-  user: { id: string; name?: string; email: string; role: 'SuperAdmin'|'Admin'|'Teacher'|'Student'|'Parent'; linkedStudents?: string[] };
+  user: { id: string; name?: string; email: string; role: 'SuperAdmin' | 'Admin' | 'Teacher' | 'Student' | 'Parent'; linkedStudents?: string[] };
 };
 
 export async function me() {
@@ -389,11 +402,11 @@ export const getLectures = async (page = 1, limit = 10, filters?: {
     });
   }
   console.log("🔍 [API] getLectures URL:", url);
-  const { data } = await api.get<{ 
-    success: boolean; 
-    lectures: LectureDTO[]; 
-    total: number; 
-    page: number; 
+  const { data } = await api.get<{
+    success: boolean;
+    lectures: LectureDTO[];
+    total: number;
+    page: number;
     totalPages: number;
   }>(url);
   console.log("🔍 [API] getLectures raw response:", data);
@@ -471,11 +484,11 @@ export const restoreLecture = async (id: string) => {
 
 // Get archived lectures
 export const getArchivedLectures = async (page = 1, limit = 10) => {
-  const { data } = await api.get<{ 
-    success: boolean; 
-    lectures: LectureDTO[]; 
-    total: number; 
-    page: number; 
+  const { data } = await api.get<{
+    success: boolean;
+    lectures: LectureDTO[];
+    total: number;
+    page: number;
     totalPages: number;
   }>(`/api/lectures/archived?page=${page}&limit=${limit}`);
   return data;
@@ -527,7 +540,7 @@ export async function getAllPayments(filters?: {
   if (filters?.batch) params.append('batch', filters.batch);
   if (filters?.student) params.append('student', filters.student);
   if (filters?.status) params.append('status', filters.status);
-  
+
   const response = await api.get(`/api/payments?${params.toString()}`);
   return response.data;
 }
@@ -567,7 +580,7 @@ export async function getAllExpenses(filters?: {
   if (filters?.from) params.append('from', filters.from);
   if (filters?.to) params.append('to', filters.to);
   if (filters?.q) params.append('q', filters.q);
-  
+
   const response = await api.get(`/api/expenses?${params.toString()}`);
   return response.data;
 }
@@ -617,7 +630,7 @@ export async function getAllSalaries(filters?: {
   if (filters?.month) params.append('month', filters.month.toString());
   if (filters?.year) params.append('year', filters.year.toString());
   if (filters?.status) params.append('status', filters.status);
-  
+
   const response = await api.get(`/api/salaries?${params.toString()}`);
   return response.data;
 }
@@ -662,7 +675,7 @@ export const getFeePlans = async () => {
   return data;
 };
 
-export const createFeePlan = async (payload: Omit<FeePlanDTO, '_id' | 'created_at' | 'plan_code'> & { installments?: Array<{ installment_no: number; due_date: string | Date; amount: number }>}) => {
+export const createFeePlan = async (payload: Omit<FeePlanDTO, '_id' | 'created_at' | 'plan_code'> & { installments?: Array<{ installment_no: number; due_date: string | Date; amount: number }> }) => {
   const { data } = await api.post<{ success: boolean; plan: FeePlanDTO }>(`/api/fee-plans`, payload);
   return data;
 };
@@ -694,12 +707,12 @@ export async function getStudentPayments(filters?: {
   status?: string;
 }) {
   const params = new URLSearchParams();
-  
+
   if (filters?.course) params.append('course', filters.course);
   if (filters?.batch) params.append('batch', filters.batch);
   if (filters?.student) params.append('student', filters.student);
   if (filters?.status) params.append('status', filters.status);
-  
+
   const response = await api.get(`/api/student-payments?${params.toString()}`);
   return response.data;
 }
@@ -913,7 +926,7 @@ export const uploadResultsExcel = async (examId: string, file: File) => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('exam_id', examId);
-  
+
   const { data } = await api.post<{
     success: boolean;
     message: string;
@@ -949,11 +962,11 @@ export const uploadExamsExcel = async (file: File) => {
   const { data } = await api.post<{
     success: boolean;
     message: string;
-      results: {
-        success: unknown[];
-        failed: unknown[];
-        total: number;
-      };
+    results: {
+      success: unknown[];
+      failed: unknown[];
+      total: number;
+    };
   }>('/api/exams/bulk-upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
@@ -1141,10 +1154,10 @@ export const uploadEnquiriesExcel = async (file: File): Promise<{
 }> => {
   // Create a new FormData instance
   const formData = new FormData();
-  
+
   // Append the file directly - no cloning needed
   formData.append("file", file);
-  
+
   // Add timeout and retry logic for network issues
   const response = await api.post("/api/enquiries/bulk-upload", formData, {
     headers: {

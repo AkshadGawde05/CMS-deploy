@@ -7,6 +7,12 @@ const TeacherSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  branchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    required: false, // Will be set to true after migration
+    index: true,
+  },
   fname: {
     type: String,
     required: true,
@@ -123,6 +129,10 @@ TeacherSchema.pre("save", function (next) {
   this.updated_at = Date.now();
   next();
 });
+
+// Compound index for branch-scoped queries
+TeacherSchema.index({ branchId: 1, emp_no: 1 }, { name: "branch_emp_idx" });
+TeacherSchema.index({ branchId: 1, status: 1 }, { name: "branch_status_idx" });
 
 const Teacher = mongoose.model("Teacher", TeacherSchema);
 export default Teacher;
