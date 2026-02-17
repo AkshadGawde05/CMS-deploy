@@ -56,30 +56,20 @@ const enquirySchema = new mongoose.Schema(
     dateOfBirth: {
       type: Date,
     },
-    source: {
+   source: {
       type: String,
       required: true,
-      enum: [
-        "Website",
-        "Facebook",
-        "Google Ads",
-        "Referral",
-        "Walk-in",
-        "Phone Call",
-      ],
+      trim: true,
+      // enum removed so we can import arbitrary sources like "PPSD data"
     },
+
     interest: {
       type: String,
       required: true,
-      enum: [
-        "Full Stack",
-        "Data Science",
-        "Digital Marketing",
-        "UI/UX",
-        "Python",
-        "Java",
-      ],
+      trim: true,
+      // enum removed so we can import arbitrary interests like "11-ISC-SCIENCE"
     },
+
     courseInterested: {
       type: String,
       trim: true,

@@ -6190,140 +6190,148 @@ app.post("/api/enquiries/:id/contact", verifyAuth, async (req, res) => {
 });
 
 // Bulk upload enquiries
+// BULK UPLOAD ENQUIRIES (REPLACED IMPLEMENTATION)
 app.post(
   "/api/enquiries/bulk-upload",
   verifyAuth,
   upload.single("file"),
   async (req, res) => {
-    try {
-      console.log("📤 Enquiry bulk upload started by user:", req.user?.id);
-      console.log("📤 Request headers:", {
-        "content-type": req.headers["content-type"],
-        "content-length": req.headers["content-length"],
-        authorization: req.headers["authorization"] ? "Present" : "None",
-      });
+    console.log("📥 Enquiry bulk upload started");
 
+    try {
       if (!req.file) {
-        console.log("❌ No file uploaded - req.file is:", req.file);
-        console.log("❌ Request body:", req.body);
         return res.status(400).json({
           success: false,
           message: "No file uploaded",
+          results: { success: [], failed: [], total: 0 },
         });
       }
 
       console.log(
-        "📄 File received:",
-        req.file.originalname,
-        "- Size:",
-        req.file.size,
-        "bytes",
+        `📄 File received: ${req.file.originalname} (${req.file.size} bytes)`
       );
 
-      // Parse Excel file
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(req.file.buffer);
 
       const worksheet =
-        workbook.getWorksheet("Enquiries") || workbook.getWorksheet(1);
+        workbook.getWorksheet("Enquiries") || workbook.worksheets[0];
+
       if (!worksheet) {
-        console.log("❌ No worksheet found");
         return res.status(400).json({
           success: false,
-          message: "No valid worksheet found in file",
+          message: "Invalid file - no worksheet found",
+          results: { success: [], failed: [], total: 0 },
         });
       }
 
+      console.log(`📊 Using sheet: ${worksheet.name}`);
+
       const data = [];
-      const errors = [];
+      const failed = [];
 
+      // Row 1 is assumed header: Sr No | First Name | Last Name | Phone | Email | Source | Interest | Address | Location
       worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber > 1) {
-          // Skip header
-          // Column mapping: Sr no | First name | Last name | Phone | Email | Source | Interest | Address | Location
-          const srNo = row.getCell(1).value;
-          const firstName = row.getCell(2).value;
-          const lastName = row.getCell(3).value;
-          const phone = row.getCell(4).value;
-          const email = row.getCell(5).value;
-          const source = row.getCell(6).value;
-          const interest = row.getCell(7).value;
-          const address = row.getCell(8).value;
-          const location = row.getCell(9).value;
+        if (rowNumber === 1) return; // skip header
 
-          // Validate required fields
-          if (!firstName || !lastName || !phone || !source || !interest) {
-            errors.push({
-              row: rowNumber,
-              error:
-                "Missing required fields: firstName, lastName, phone, source, or interest",
-            });
-            return;
-          }
+        const srNo = row.getCell(1).value;
+        const firstName = row.getCell(2).value;
+        const lastName = row.getCell(3).value;
+        const phone = row.getCell(4).value;
+        const email = row.getCell(5).value;
+        const source = row.getCell(6).value;
+        const interest = row.getCell(7).value;
+        const address = row.getCell(8).value;
+        const location = row.getCell(9).value;
 
-          // Validate phone format
-          const phoneStr = String(phone).replace(/\D/g, "");
-          if (phoneStr.length !== 10) {
-            errors.push({
-              row: rowNumber,
-              error: "Phone number must be 10 digits",
-            });
-            return;
-          }
+        // Normalize basic fields
+        const fn = firstName ? String(firstName).trim() : "";
+        const ln = lastName ? String(lastName).trim() : "";
+        const phoneStr = phone ? String(phone).replace(/\D/g, "") : "";
+        const src = source ? String(source).trim() : "";
+        const intr = interest ? String(interest).trim() : "";
+        const em =
+          email && String(email).trim()
+            ? String(email).toLowerCase().trim()
+            : undefined;
+        const addr =
+          address && String(address).trim()
+            ? String(address).trim()
+            : undefined;
+        const loc =
+          location && String(location).trim()
+            ? String(location).trim()
+            : undefined;
 
-          data.push({
-            rowNumber,
-            srNo: srNo ? parseInt(String(srNo)) : undefined,
-            firstName: String(firstName).trim(),
-            lastName: String(lastName).trim(),
-            phone: phoneStr,
-            email: email ? String(email).toLowerCase().trim() : undefined,
-            source: String(source).trim(),
-            interest: String(interest).trim(),
-            address: address ? String(address).trim() : undefined,
-            location: location ? String(location).trim() : undefined,
-          });
+        // Basic required field validation
+        const rowErrors = [];
+
+        if (!fn || !ln || !phoneStr || !src || !intr) {
+          rowErrors.push(
+            "Missing required fields: firstName, lastName, phone, source, or interest"
+          );
         }
+
+        if (phoneStr && phoneStr.length !== 10) {
+          rowErrors.push("Phone number must be 10 digits");
+        }
+
+        if (rowErrors.length > 0) {
+          failed.push({
+            rowNumber,
+            srNo,
+            firstName: fn,
+            lastName: ln,
+            phone: phoneStr,
+            email: em,
+            source: src,
+            interest: intr,
+            address: addr,
+            location: loc,
+            error: rowErrors.join("; "),
+          });
+          return;
+        }
+
+        data.push({
+          rowNumber,
+          srNo: srNo ? parseInt(String(srNo), 10) : undefined,
+          firstName: fn,
+          lastName: ln,
+          phone: phoneStr,
+          email: em,
+          source: src,
+          interest: intr,
+          address: addr,
+          location: loc,
+        });
       });
 
-      console.log(`📊 Parsed ${data.length} rows, ${errors.length} errors`);
+      console.log(
+        `📊 Parsed ${data.length} valid-looking rows, ${failed.length} immediate failures`
+      );
 
       if (data.length === 0) {
         return res.status(400).json({
           success: false,
-          message: "No valid data found in file",
-          results: { success: [], failed: errors, total: 0 },
+          message:
+            "No valid data found in file after basic validation. Please check required fields and phone formats.",
+          results: { success: [], failed, total: failed.length },
         });
       }
 
-      // Check for duplicate phone numbers within the uploaded file
+      // 1) INTERNAL DUPLICATES (within file) – soft fail
       const phoneMap = new Map();
       const internalDuplicates = [];
 
-      data.forEach((item, index) => {
+      data.forEach((item) => {
         if (phoneMap.has(item.phone)) {
           internalDuplicates.push({
             ...item,
             error: `Duplicate phone number within file (also found at row ${phoneMap.get(
-              item.phone,
+              item.phone
             )})`,
           });
-          // Also mark the first occurrence as duplicate
-          const firstOccurrenceIndex = phoneMap.get(item.phone) - 2; // -2 because phoneMap stores rowNumber which is 1-based and skips header
-          if (firstOccurrenceIndex >= 0) {
-            const firstItem = data[firstOccurrenceIndex];
-            if (
-              firstItem &&
-              !internalDuplicates.find(
-                (d) => d.rowNumber === firstItem.rowNumber,
-              )
-            ) {
-              internalDuplicates.push({
-                ...firstItem,
-                error: `Duplicate phone number within file (also found at row ${item.rowNumber})`,
-              });
-            }
-          }
         } else {
           phoneMap.set(item.phone, item.rowNumber);
         }
@@ -6331,99 +6339,50 @@ app.post(
 
       if (internalDuplicates.length > 0) {
         console.log(
-          `❌ Found ${internalDuplicates.length} internal duplicates`,
+          `⚠️ Found ${internalDuplicates.length} internal duplicate rows`
         );
-        return res.status(400).json({
-          success: false,
-          message: `File contains ${internalDuplicates.length} duplicate phone numbers. Please remove duplicates and try again.`,
-          results: {
-            success: [],
-            failed: [...errors, ...internalDuplicates],
-            total: 0,
-            duplicatesCount: internalDuplicates.length,
-          },
-        });
+        failed.push(...internalDuplicates);
       }
 
-      // Check for existing phone numbers in database
-      const existingPhones = await Enquiry.find({
-        phone: { $in: data.map((item) => item.phone) },
+      // Keep only first occurrence for import
+      const seenPhones = new Set();
+      const uniqueData = data.filter((item) => {
+        if (seenPhones.has(item.phone)) return false;
+        seenPhones.add(item.phone);
+        return true;
+      });
+
+      // 2) DATABASE DUPLICATES
+      const phonesToCheck = uniqueData.map((item) => item.phone);
+      const existing = await Enquiry.find({
+        phone: { $in: phonesToCheck },
       })
         .select("phone")
         .lean();
 
-      const existingPhoneSet = new Set(existingPhones.map((e) => e.phone));
-      const databaseDuplicates = [];
+      const existingSet = new Set(existing.map((e) => e.phone));
+      const finalData = [];
 
-      data.forEach((item) => {
-        if (existingPhoneSet.has(item.phone)) {
-          databaseDuplicates.push({
+      uniqueData.forEach((item) => {
+        if (existingSet.has(item.phone)) {
+          failed.push({
             ...item,
             error: "Phone number already exists in database",
           });
+        } else {
+          finalData.push(item);
         }
       });
 
-      if (databaseDuplicates.length > 0) {
-        console.log(
-          `❌ Found ${databaseDuplicates.length} database duplicates`,
-        );
-        return res.status(400).json({
-          success: false,
-          message: `File contains ${databaseDuplicates.length} phone numbers that already exist in database. Please remove them and try again.`,
-          results: {
-            success: [],
-            failed: [...errors, ...databaseDuplicates],
-            total: 0,
-            duplicatesCount: databaseDuplicates.length,
-          },
-        });
-      }
+      console.log(
+        `📌 After duplicate checks: to-insert=${finalData.length}, failed=${failed.length}`
+      );
 
-      const successfulEnquiries = [];
-      const failedEnquiries = [];
+      const successful = [];
 
-      // Process each enquiry (duplicates already checked)
-      for (const item of data) {
+      // 3) INSERT ENQUIRIES
+      for (const item of finalData) {
         try {
-          // Validate source and interest values
-          const validSources = [
-            "Website",
-            "Facebook",
-            "Google Ads",
-            "Referral",
-            "Walk-in",
-            "Phone Call",
-          ];
-          const validInterests = [
-            "Full Stack",
-            "Data Science",
-            "Digital Marketing",
-            "UI/UX",
-            "Python",
-            "Java",
-          ];
-
-          if (!validSources.includes(item.source)) {
-            failedEnquiries.push({
-              ...item,
-              error: `Invalid source. Must be one of: ${validSources.join(
-                ", ",
-              )}`,
-            });
-            continue;
-          }
-
-          if (!validInterests.includes(item.interest)) {
-            failedEnquiries.push({
-              ...item,
-              error: `Invalid interest. Must be one of: ${validInterests.join(
-                ", ",
-              )}`,
-            });
-            continue;
-          }
-
           const enquiry = new Enquiry({
             srNo: item.srNo,
             firstName: item.firstName,
@@ -6439,43 +6398,43 @@ app.post(
           });
 
           await enquiry.save();
-          console.log(
-            `✅ Saved enquiry: ${enquiry.firstName} ${enquiry.lastName} - ${enquiry.phone}`,
+          successful.push(enquiry);
+        } catch (err) {
+          console.error(
+            `❌ Failed to save enquiry at row ${item.rowNumber}:`,
+            err.message
           );
-          successfulEnquiries.push(enquiry);
-        } catch (error) {
-          console.error(`❌ Row ${item.rowNumber} failed:`, error.message);
-          failedEnquiries.push({
+          failed.push({
             ...item,
-            error: error.message,
+            error: err.message,
           });
         }
       }
 
       console.log(
-        `✅ Successfully processed ${successfulEnquiries.length} enquiries`,
+        `✅ Bulk upload complete. Success=${successful.length}, Failed=${failed.length}`
       );
-      console.log(`❌ Failed to process ${failedEnquiries.length} enquiries`);
 
-      res.json({
+      return res.json({
         success: true,
-        message: `${successfulEnquiries.length} enquiries uploaded successfully`,
+        message: `${successful.length} enquiries uploaded successfully`,
         results: {
-          success: successfulEnquiries,
-          failed: failedEnquiries.concat(errors),
-          total: successfulEnquiries.length + failedEnquiries.length,
+          success: successful,
+          failed: failed,
+          total: successful.length + failed.length,
         },
       });
     } catch (err) {
-      console.error("💥 Enquiry bulk upload error:", err);
-      res.status(500).json({
+      console.error("💥 Enquiry bulk upload fatal error:", err);
+      return res.status(500).json({
         success: false,
-        message: err.message,
+        message: "Bulk upload failed: " + err.message,
         results: { success: [], failed: [], total: 0 },
       });
     }
-  },
+  }
 );
+
 
 // Get enquiry analytics
 app.get("/api/enquiries/analytics", verifyAuth, async (req, res) => {
