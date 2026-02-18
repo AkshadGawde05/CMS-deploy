@@ -2,6 +2,12 @@ import mongoose from "mongoose";
 
 const enquirySchema = new mongoose.Schema(
   {
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: false, // Will be set to true after migration
+      index: true,
+    },
     srNo: {
       type: Number,
       unique: true,
@@ -50,30 +56,20 @@ const enquirySchema = new mongoose.Schema(
     dateOfBirth: {
       type: Date,
     },
-    source: {
+   source: {
       type: String,
       required: true,
-      enum: [
-        "Website",
-        "Facebook",
-        "Google Ads",
-        "Referral",
-        "Walk-in",
-        "Phone Call",
-      ],
+      trim: true,
+      // enum removed so we can import arbitrary sources like "PPSD data"
     },
+
     interest: {
       type: String,
       required: true,
-      enum: [
-        "Full Stack",
-        "Data Science",
-        "Digital Marketing",
-        "UI/UX",
-        "Python",
-        "Java",
-      ],
+      trim: true,
+      // enum removed so we can import arbitrary interests like "11-ISC-SCIENCE"
     },
+
     courseInterested: {
       type: String,
       trim: true,
@@ -191,6 +187,10 @@ enquirySchema.index({ phone: 1, email: 1 });
 enquirySchema.index({ status: 1, createdAt: -1 });
 enquirySchema.index({ assignedTo: 1, status: 1 });
 enquirySchema.index({ leadScore: -1 });
+
+// Branch-scoped indexes
+enquirySchema.index({ branchId: 1, status: 1 });
+enquirySchema.index({ branchId: 1, createdAt: -1 });
 
 // Pre-save middleware to compute full name and generate serial number
 enquirySchema.pre("save", async function (next) {

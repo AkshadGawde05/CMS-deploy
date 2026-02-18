@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 
 const LectureSchema = new mongoose.Schema({
+  branchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    required: false, // Will be set to true after migration
+    index: true,
+  },
   course_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Course",
@@ -95,6 +101,11 @@ LectureSchema.pre("save", function (next) {
   this.updated_at = Date.now();
   next();
 });
+
+// Branch-scoped indexes
+LectureSchema.index({ branchId: 1, date: -1 });
+LectureSchema.index({ branchId: 1, batch_id: 1, date: -1 });
+LectureSchema.index({ branchId: 1, teacher_id: 1 });
 
 const Lecture = mongoose.model("Lecture", LectureSchema);
 export default Lecture;

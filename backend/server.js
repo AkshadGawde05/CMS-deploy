@@ -65,7 +65,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Branch-Id"],
 };
 app.use(cors(corsOptions));
 
@@ -85,6 +85,7 @@ import lecturesRouter from "./routes/lectures.js";
 import rolesRouter from "./routes/roles.js";
 import syllabusRouter from "./routes/syllabus.js";
 import dashboardRouter from "./routes/dashboard.js";
+import branchesRouter from "./routes/branches.js";
 
 // ===== LECTURE TEMPLATE ROUTE (must be before router mount) =====
 // Download Lecture template
@@ -224,14 +225,28 @@ app.use("/api/devices", deviceRoutes);
 app.use("/api/roles", rolesRouter);
 app.use("/api/syllabus", syllabusRouter);
 app.use("/api/dashboard", dashboardRouter);
+app.use("/api/branches", branchesRouter);
 
 // ===== FEE PLANS ROUTES =====
 
 // Get fee plans list
-app.get("/api/fee-plans", async (req, res) => {
+app.get("/api/fee-plans", verifyAuth, async (req, res) => {
   try {
     const { batch_id } = req.query;
     const filter = batch_id ? { batch_id } : {};
+
+    // Add branch filter
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      filter.branchId = branchId;
+    } else if (!isSuperAdmin) {
+      // Fallback to user's primary branch if not specified and not super admin
+      if (req.user?.primaryBranch) {
+        filter.branchId = req.user.primaryBranch;
+      }
+    }
 
     const plans = await FeePlan.find(filter)
       .populate({
@@ -248,7 +263,7 @@ app.get("/api/fee-plans", async (req, res) => {
 });
 
 // Create fee plan
-app.post("/api/fee-plans", async (req, res) => {
+app.post("/api/fee-plans", verifyAuth, async (req, res) => {
   try {
     console.log(
       "📝 Creating fee plan with data:",
@@ -274,8 +289,18 @@ app.post("/api/fee-plans", async (req, res) => {
       });
     }
 
+    // Get branchId from context
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+    if (!branchId) {
+      return res.status(400).json({
+        success: false,
+        message: "Branch ID is required",
+      });
+    }
+
     // Build plan data
     const planData = {
+      branchId,
       batch_id,
       total_amount: Number(total_amount),
       num_installments: Number(num_installments),
@@ -313,9 +338,23 @@ app.post("/api/fee-plans", async (req, res) => {
 });
 
 // Update fee plan
-app.put("/api/fee-plans/:id", async (req, res) => {
+app.put("/api/fee-plans/:id", verifyAuth, async (req, res) => {
   try {
     const update = { ...req.body, updated_at: new Date() };
+
+    // Verify user has access to this fee plan's branch
+    const existingPlan = await FeePlan.findById(req.params.id);
+    if (!existingPlan) {
+      return res.status(404).json({ success: false, message: "Plan not found" });
+    }
+
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+
+    if (!isSuperAdmin && String(existingPlan.branchId) !== String(branchId)) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
     const plan = await FeePlan.findByIdAndUpdate(req.params.id, update, {
       new: true,
       runValidators: true,
@@ -335,7 +374,7 @@ app.put("/api/fee-plans/:id", async (req, res) => {
 });
 
 // Delete fee plan and its installments
-app.delete("/api/fee-plans/:id", async (req, res) => {
+app.delete("/api/fee-plans/:id", verifyAuth, async (req, res) => {
   try {
     const id = req.params.id;
     await FeeInstallment.deleteMany({ plan_id: id });
@@ -390,10 +429,21 @@ app.get("/api/expenses/meta", (req, res) => {
 });
 
 // List expenses with filters
-app.get("/api/expenses", async (req, res) => {
+app.get("/api/expenses", verifyAuth, async (req, res) => {
   try {
     const { category, status, from, to, q } = req.query;
     const filter = {};
+
+    // Add branch filter
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      filter.branchId = branchId;
+    } else if (!isSuperAdmin && req.user?.primaryBranch) {
+      filter.branchId = req.user.primaryBranch;
+    }
+
     if (category) filter.category = category;
     if (status) filter.status = status;
     if (from || to) {
@@ -420,10 +470,21 @@ app.get("/api/expenses", async (req, res) => {
 });
 
 // Create expense (supports multipart for receipt)
-app.post("/api/expenses", uploadReceipt.single("receipt"), async (req, res) => {
+app.post("/api/expenses", verifyAuth, uploadReceipt.single("receipt"), async (req, res) => {
   try {
     const body = req.body;
+
+    // Get branchId from context
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+    if (!branchId) {
+      return res.status(400).json({
+        success: false,
+        message: "Branch ID is required",
+      });
+    }
+
     const payload = {
+      branchId,
       category: body.category,
       title: body.title,
       description: body.description,
@@ -449,6 +510,7 @@ app.post("/api/expenses", uploadReceipt.single("receipt"), async (req, res) => {
 // Update expense (supports multipart for receipt)
 app.put(
   "/api/expenses/:id",
+  verifyAuth,
   uploadReceipt.single("receipt"),
   async (req, res) => {
     try {
@@ -475,7 +537,7 @@ app.put(
 );
 
 // Delete expense
-app.delete("/api/expenses/:id", async (req, res) => {
+app.delete("/api/expenses/:id", verifyAuth, async (req, res) => {
   try {
     await Expense.findByIdAndDelete(req.params.id);
     res.json({ success: true });
@@ -485,9 +547,22 @@ app.delete("/api/expenses/:id", async (req, res) => {
 });
 
 // Expense stats
-app.get("/api/expenses/stats", async (req, res) => {
+app.get("/api/expenses/stats", verifyAuth, async (req, res) => {
   try {
+    const filter = {};
+
+    // Add branch filter
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      filter.branchId = branchId;
+    } else if (!isSuperAdmin && req.user?.primaryBranch) {
+      filter.branchId = req.user.primaryBranch;
+    }
+
     const agg = await Expense.aggregate([
+      { $match: filter },
       {
         $group: {
           _id: null,
@@ -501,6 +576,7 @@ app.get("/api/expenses/stats", async (req, res) => {
       },
     ]);
     const byCategory = await Expense.aggregate([
+      { $match: filter },
       { $group: { _id: "$category", total: { $sum: "$amount" } } },
       { $sort: { total: -1 } },
     ]);
@@ -620,7 +696,7 @@ function parseExcelDate(input) {
 
 // ===== Batches API Routes =====
 // GET /api/batches with pagination, supports archived filter
-app.get("/api/batches", async (req, res) => {
+app.get("/api/batches", verifyAuth, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -630,21 +706,31 @@ app.get("/api/batches", async (req, res) => {
     const query = isArchivedReq
       ? { $or: [{ isArchived: true }, { archived: true }] }
       : {
-          $and: [
-            {
-              $or: [
-                { isArchived: { $ne: true } },
-                { isArchived: { $exists: false } },
-              ],
-            },
-            {
-              $or: [
-                { archived: { $ne: true } },
-                { archived: { $exists: false } },
-              ],
-            },
-          ],
-        };
+        $and: [
+          {
+            $or: [
+              { isArchived: { $ne: true } },
+              { isArchived: { $exists: false } },
+            ],
+          },
+          {
+            $or: [
+              { archived: { $ne: true } },
+              { archived: { $exists: false } },
+            ],
+          },
+        ],
+      };
+
+    // Add branch filter
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      query.branchId = branchId;
+    } else if (!isSuperAdmin && req.user?.primaryBranch) {
+      query.branchId = req.user.primaryBranch;
+    }
 
     const total = await Batches.countDocuments(query);
     const batchesRaw = await Batches.find(query)
@@ -750,23 +836,42 @@ app.get("/api/batches", async (req, res) => {
 });
 
 // POST /api/batches (add new batch)
-app.post("/api/batches", async (req, res) => {
+app.post("/api/batches", verifyAuth, async (req, res) => {
   try {
     console.log("=== BATCH CREATION REQUEST ===");
     console.log("Raw body:", req.body);
 
-    // Destructure required fields
-    const { name, course_id, schedule } = req.body;
-    const missing = [];
-    if (!name) missing.push("name");
-    if (!course_id) missing.push("course_id");
-    if (!schedule) missing.push("schedule");
-    if (missing.length) {
+    // Get branchId from context
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+    if (!branchId) {
       return res.status(400).json({
         success: false,
-        message: `Required fields missing: ${missing.join(", ")}`,
+        message: "Branch ID is required",
       });
     }
+
+    // Destructure required fields
+    const { name, course_id, syllabus_id, teacher_id, schedule } = req.body;
+
+    // Validate required fields
+    if (!name || !course_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: name and course_id are mandatory",
+      });
+    }
+
+    // Build batch data
+    const batchData = {
+      branchId,
+      name,
+      course_id,
+    };
+
+    // Add optional fields if provided
+    if (syllabus_id) batchData.syllabus_id = syllabus_id;
+    if (teacher_id) batchData.teacher_id = teacher_id;
+    if (schedule && Array.isArray(schedule)) batchData.schedule = schedule;
 
     // Validate ObjectIds
     if (!mongoose.Types.ObjectId.isValid(course_id)) {
@@ -804,10 +909,12 @@ app.post("/api/batches", async (req, res) => {
 
     // Replace schedule string with structured schedule if desired (or keep as string to match schema)
     // Current schema stores 'schedule' as string, so we stringify again to ensure consistency
-    req.body.schedule = JSON.stringify(scheduleObj);
+    if (schedule) {
+      batchData.schedule = typeof schedule === "string" ? schedule : JSON.stringify(schedule);
+    }
 
     // Persist
-    const batch = new Batches(req.body);
+    const batch = new Batches(batchData);
     await batch.save();
     console.log("Batch created with _id:", batch._id);
     res.json({ success: true, batch });
@@ -818,7 +925,7 @@ app.post("/api/batches", async (req, res) => {
 });
 
 // PUT /api/batches/:id (edit batch)
-app.put("/api/batches/:id", async (req, res) => {
+app.put("/api/batches/:id", verifyAuth, async (req, res) => {
   try {
     const batch = await Batches.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
@@ -915,21 +1022,31 @@ app.get("/api/courses", async (req, res) => {
     const query = isArchivedReq
       ? { $or: [{ isArchived: true }, { archived: true }] }
       : {
-          $and: [
-            {
-              $or: [
-                { isArchived: { $ne: true } },
-                { isArchived: { $exists: false } },
-              ],
-            },
-            {
-              $or: [
-                { archived: { $ne: true } },
-                { archived: { $exists: false } },
-              ],
-            },
-          ],
-        };
+        $and: [
+          {
+            $or: [
+              { isArchived: { $ne: true } },
+              { isArchived: { $exists: false } },
+            ],
+          },
+          {
+            $or: [
+              { archived: { $ne: true } },
+              { archived: { $exists: false } },
+            ],
+          },
+        ],
+      };
+
+    // Add branch filter
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      query.branchId = branchId;
+    } else if (!isSuperAdmin && req.user?.primaryBranch) {
+      query.branchId = req.user.primaryBranch;
+    }
 
     const total = await Course.countDocuments(query);
     // Fetch the current page of courses
@@ -1193,8 +1310,7 @@ app.post("/api/students", async (req, res) => {
       // Remove this after verification to avoid leaking sensitive info.
       try {
         console.log(
-          `🔐 [DEBUG] Generated temp password for new student (${
-            email || phone || "no-contact"
+          `🔐 [DEBUG] Generated temp password for new student (${email || phone || "no-contact"
           }):`,
           tempPassword,
         );
@@ -1299,8 +1415,7 @@ app.post("/api/students", async (req, res) => {
             });
             await installment.save();
             console.log(
-              `✅ Installment ${
-                i + 1
+              `✅ Installment ${i + 1
               } created - Due: ${dueDate.toDateString()}, Amount: ₹${installmentAmount}`,
             );
           }
@@ -1379,11 +1494,21 @@ app.post("/api/students", async (req, res) => {
 });
 
 // Get all students with user details + batch/course/fees metadata (Admin/Teacher)
-app.get("/api/students", async (req, res) => {
+app.get("/api/students", verifyAuth, async (req, res) => {
   console.log("📋 GET /api/students called");
   try {
+    const filter = {};
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      filter.branchId = branchId;
+    } else if (!isSuperAdmin && req.user?.primaryBranch) {
+      filter.branchId = req.user.primaryBranch;
+    }
+
     // Keep course_id and batch_id as raw IDs to avoid breaking frontend filters
-    const students = await Student.find().populate(
+    const students = await Student.find(filter).populate(
       "user_id",
       "email phone status last_login",
     );
@@ -1413,9 +1538,9 @@ app.get("/api/students", async (req, res) => {
     const [batchesDocs, feePlansDocs, coursesDocs] = await Promise.all([
       batchIds.length
         ? Batches.find({ _id: { $in: batchIds } }).populate(
-            "course_id",
-            "name course_fee gst_percent",
-          )
+          "course_id",
+          "name course_fee gst_percent",
+        )
         : [],
       batchIds.length ? FeePlan.find({ batch_id: { $in: batchIds } }) : [],
       courseIds.length ? Course.find({ _id: { $in: courseIds } }) : [],
@@ -1788,7 +1913,7 @@ app.post(
             dob:
               parseExcelDate(
                 row["Date of Birth (DD/MM/YYYY)"] ||
-                  row["Date of Birth (YYYY-MM-DD)"],
+                row["Date of Birth (YYYY-MM-DD)"],
               ) || undefined,
             gender: gender.toLowerCase(),
             fee_status: "pending",
@@ -3170,10 +3295,10 @@ app.get("/api/lectures", async (req, res) => {
             duration_minutes:
               lecture.lecture_end && lecture.lecture_start
                 ? Math.round(
-                    (new Date(lecture.lecture_end) -
-                      new Date(lecture.lecture_start)) /
-                      (1000 * 60),
-                  )
+                  (new Date(lecture.lecture_end) -
+                    new Date(lecture.lecture_start)) /
+                  (1000 * 60),
+                )
                 : 0,
           },
         };
@@ -3517,10 +3642,10 @@ app.get("/api/lectures/archived", async (req, res) => {
             duration_minutes:
               lecture.lecture_end && lecture.lecture_start
                 ? Math.round(
-                    (new Date(lecture.lecture_end) -
-                      new Date(lecture.lecture_start)) /
-                      (1000 * 60),
-                  )
+                  (new Date(lecture.lecture_end) -
+                    new Date(lecture.lecture_start)) /
+                  (1000 * 60),
+                )
                 : 0,
           },
         };
@@ -3628,10 +3753,10 @@ app.get("/api/lectures/:id", async (req, res) => {
         duration_minutes:
           lecture.lecture_end && lecture.lecture_start
             ? Math.round(
-                (new Date(lecture.lecture_end) -
-                  new Date(lecture.lecture_start)) /
-                  (1000 * 60),
-              )
+              (new Date(lecture.lecture_end) -
+                new Date(lecture.lecture_start)) /
+              (1000 * 60),
+            )
             : 0,
       },
     };
@@ -6065,140 +6190,148 @@ app.post("/api/enquiries/:id/contact", verifyAuth, async (req, res) => {
 });
 
 // Bulk upload enquiries
+// BULK UPLOAD ENQUIRIES (REPLACED IMPLEMENTATION)
 app.post(
   "/api/enquiries/bulk-upload",
   verifyAuth,
   upload.single("file"),
   async (req, res) => {
-    try {
-      console.log("📤 Enquiry bulk upload started by user:", req.user?.id);
-      console.log("📤 Request headers:", {
-        "content-type": req.headers["content-type"],
-        "content-length": req.headers["content-length"],
-        authorization: req.headers["authorization"] ? "Present" : "None",
-      });
+    console.log("📥 Enquiry bulk upload started");
 
+    try {
       if (!req.file) {
-        console.log("❌ No file uploaded - req.file is:", req.file);
-        console.log("❌ Request body:", req.body);
         return res.status(400).json({
           success: false,
           message: "No file uploaded",
+          results: { success: [], failed: [], total: 0 },
         });
       }
 
       console.log(
-        "📄 File received:",
-        req.file.originalname,
-        "- Size:",
-        req.file.size,
-        "bytes",
+        `📄 File received: ${req.file.originalname} (${req.file.size} bytes)`
       );
 
-      // Parse Excel file
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(req.file.buffer);
 
       const worksheet =
-        workbook.getWorksheet("Enquiries") || workbook.getWorksheet(1);
+        workbook.getWorksheet("Enquiries") || workbook.worksheets[0];
+
       if (!worksheet) {
-        console.log("❌ No worksheet found");
         return res.status(400).json({
           success: false,
-          message: "No valid worksheet found in file",
+          message: "Invalid file - no worksheet found",
+          results: { success: [], failed: [], total: 0 },
         });
       }
 
+      console.log(`📊 Using sheet: ${worksheet.name}`);
+
       const data = [];
-      const errors = [];
+      const failed = [];
 
+      // Row 1 is assumed header: Sr No | First Name | Last Name | Phone | Email | Source | Interest | Address | Location
       worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber > 1) {
-          // Skip header
-          // Column mapping: Sr no | First name | Last name | Phone | Email | Source | Interest | Address | Location
-          const srNo = row.getCell(1).value;
-          const firstName = row.getCell(2).value;
-          const lastName = row.getCell(3).value;
-          const phone = row.getCell(4).value;
-          const email = row.getCell(5).value;
-          const source = row.getCell(6).value;
-          const interest = row.getCell(7).value;
-          const address = row.getCell(8).value;
-          const location = row.getCell(9).value;
+        if (rowNumber === 1) return; // skip header
 
-          // Validate required fields
-          if (!firstName || !lastName || !phone || !source || !interest) {
-            errors.push({
-              row: rowNumber,
-              error:
-                "Missing required fields: firstName, lastName, phone, source, or interest",
-            });
-            return;
-          }
+        const srNo = row.getCell(1).value;
+        const firstName = row.getCell(2).value;
+        const lastName = row.getCell(3).value;
+        const phone = row.getCell(4).value;
+        const email = row.getCell(5).value;
+        const source = row.getCell(6).value;
+        const interest = row.getCell(7).value;
+        const address = row.getCell(8).value;
+        const location = row.getCell(9).value;
 
-          // Validate phone format
-          const phoneStr = String(phone).replace(/\D/g, "");
-          if (phoneStr.length !== 10) {
-            errors.push({
-              row: rowNumber,
-              error: "Phone number must be 10 digits",
-            });
-            return;
-          }
+        // Normalize basic fields
+        const fn = firstName ? String(firstName).trim() : "";
+        const ln = lastName ? String(lastName).trim() : "";
+        const phoneStr = phone ? String(phone).replace(/\D/g, "") : "";
+        const src = source ? String(source).trim() : "";
+        const intr = interest ? String(interest).trim() : "";
+        const em =
+          email && String(email).trim()
+            ? String(email).toLowerCase().trim()
+            : undefined;
+        const addr =
+          address && String(address).trim()
+            ? String(address).trim()
+            : undefined;
+        const loc =
+          location && String(location).trim()
+            ? String(location).trim()
+            : undefined;
 
-          data.push({
-            rowNumber,
-            srNo: srNo ? parseInt(String(srNo)) : undefined,
-            firstName: String(firstName).trim(),
-            lastName: String(lastName).trim(),
-            phone: phoneStr,
-            email: email ? String(email).toLowerCase().trim() : undefined,
-            source: String(source).trim(),
-            interest: String(interest).trim(),
-            address: address ? String(address).trim() : undefined,
-            location: location ? String(location).trim() : undefined,
-          });
+        // Basic required field validation
+        const rowErrors = [];
+
+        if (!fn || !ln || !phoneStr || !src || !intr) {
+          rowErrors.push(
+            "Missing required fields: firstName, lastName, phone, source, or interest"
+          );
         }
+
+        if (phoneStr && phoneStr.length !== 10) {
+          rowErrors.push("Phone number must be 10 digits");
+        }
+
+        if (rowErrors.length > 0) {
+          failed.push({
+            rowNumber,
+            srNo,
+            firstName: fn,
+            lastName: ln,
+            phone: phoneStr,
+            email: em,
+            source: src,
+            interest: intr,
+            address: addr,
+            location: loc,
+            error: rowErrors.join("; "),
+          });
+          return;
+        }
+
+        data.push({
+          rowNumber,
+          srNo: srNo ? parseInt(String(srNo), 10) : undefined,
+          firstName: fn,
+          lastName: ln,
+          phone: phoneStr,
+          email: em,
+          source: src,
+          interest: intr,
+          address: addr,
+          location: loc,
+        });
       });
 
-      console.log(`📊 Parsed ${data.length} rows, ${errors.length} errors`);
+      console.log(
+        `📊 Parsed ${data.length} valid-looking rows, ${failed.length} immediate failures`
+      );
 
       if (data.length === 0) {
         return res.status(400).json({
           success: false,
-          message: "No valid data found in file",
-          results: { success: [], failed: errors, total: 0 },
+          message:
+            "No valid data found in file after basic validation. Please check required fields and phone formats.",
+          results: { success: [], failed, total: failed.length },
         });
       }
 
-      // Check for duplicate phone numbers within the uploaded file
+      // 1) INTERNAL DUPLICATES (within file) – soft fail
       const phoneMap = new Map();
       const internalDuplicates = [];
 
-      data.forEach((item, index) => {
+      data.forEach((item) => {
         if (phoneMap.has(item.phone)) {
           internalDuplicates.push({
             ...item,
             error: `Duplicate phone number within file (also found at row ${phoneMap.get(
-              item.phone,
+              item.phone
             )})`,
           });
-          // Also mark the first occurrence as duplicate
-          const firstOccurrenceIndex = phoneMap.get(item.phone) - 2; // -2 because phoneMap stores rowNumber which is 1-based and skips header
-          if (firstOccurrenceIndex >= 0) {
-            const firstItem = data[firstOccurrenceIndex];
-            if (
-              firstItem &&
-              !internalDuplicates.find(
-                (d) => d.rowNumber === firstItem.rowNumber,
-              )
-            ) {
-              internalDuplicates.push({
-                ...firstItem,
-                error: `Duplicate phone number within file (also found at row ${item.rowNumber})`,
-              });
-            }
-          }
         } else {
           phoneMap.set(item.phone, item.rowNumber);
         }
@@ -6206,99 +6339,50 @@ app.post(
 
       if (internalDuplicates.length > 0) {
         console.log(
-          `❌ Found ${internalDuplicates.length} internal duplicates`,
+          `⚠️ Found ${internalDuplicates.length} internal duplicate rows`
         );
-        return res.status(400).json({
-          success: false,
-          message: `File contains ${internalDuplicates.length} duplicate phone numbers. Please remove duplicates and try again.`,
-          results: {
-            success: [],
-            failed: [...errors, ...internalDuplicates],
-            total: 0,
-            duplicatesCount: internalDuplicates.length,
-          },
-        });
+        failed.push(...internalDuplicates);
       }
 
-      // Check for existing phone numbers in database
-      const existingPhones = await Enquiry.find({
-        phone: { $in: data.map((item) => item.phone) },
+      // Keep only first occurrence for import
+      const seenPhones = new Set();
+      const uniqueData = data.filter((item) => {
+        if (seenPhones.has(item.phone)) return false;
+        seenPhones.add(item.phone);
+        return true;
+      });
+
+      // 2) DATABASE DUPLICATES
+      const phonesToCheck = uniqueData.map((item) => item.phone);
+      const existing = await Enquiry.find({
+        phone: { $in: phonesToCheck },
       })
         .select("phone")
         .lean();
 
-      const existingPhoneSet = new Set(existingPhones.map((e) => e.phone));
-      const databaseDuplicates = [];
+      const existingSet = new Set(existing.map((e) => e.phone));
+      const finalData = [];
 
-      data.forEach((item) => {
-        if (existingPhoneSet.has(item.phone)) {
-          databaseDuplicates.push({
+      uniqueData.forEach((item) => {
+        if (existingSet.has(item.phone)) {
+          failed.push({
             ...item,
             error: "Phone number already exists in database",
           });
+        } else {
+          finalData.push(item);
         }
       });
 
-      if (databaseDuplicates.length > 0) {
-        console.log(
-          `❌ Found ${databaseDuplicates.length} database duplicates`,
-        );
-        return res.status(400).json({
-          success: false,
-          message: `File contains ${databaseDuplicates.length} phone numbers that already exist in database. Please remove them and try again.`,
-          results: {
-            success: [],
-            failed: [...errors, ...databaseDuplicates],
-            total: 0,
-            duplicatesCount: databaseDuplicates.length,
-          },
-        });
-      }
+      console.log(
+        `📌 After duplicate checks: to-insert=${finalData.length}, failed=${failed.length}`
+      );
 
-      const successfulEnquiries = [];
-      const failedEnquiries = [];
+      const successful = [];
 
-      // Process each enquiry (duplicates already checked)
-      for (const item of data) {
+      // 3) INSERT ENQUIRIES
+      for (const item of finalData) {
         try {
-          // Validate source and interest values
-          const validSources = [
-            "Website",
-            "Facebook",
-            "Google Ads",
-            "Referral",
-            "Walk-in",
-            "Phone Call",
-          ];
-          const validInterests = [
-            "Full Stack",
-            "Data Science",
-            "Digital Marketing",
-            "UI/UX",
-            "Python",
-            "Java",
-          ];
-
-          if (!validSources.includes(item.source)) {
-            failedEnquiries.push({
-              ...item,
-              error: `Invalid source. Must be one of: ${validSources.join(
-                ", ",
-              )}`,
-            });
-            continue;
-          }
-
-          if (!validInterests.includes(item.interest)) {
-            failedEnquiries.push({
-              ...item,
-              error: `Invalid interest. Must be one of: ${validInterests.join(
-                ", ",
-              )}`,
-            });
-            continue;
-          }
-
           const enquiry = new Enquiry({
             srNo: item.srNo,
             firstName: item.firstName,
@@ -6314,43 +6398,43 @@ app.post(
           });
 
           await enquiry.save();
-          console.log(
-            `✅ Saved enquiry: ${enquiry.firstName} ${enquiry.lastName} - ${enquiry.phone}`,
+          successful.push(enquiry);
+        } catch (err) {
+          console.error(
+            `❌ Failed to save enquiry at row ${item.rowNumber}:`,
+            err.message
           );
-          successfulEnquiries.push(enquiry);
-        } catch (error) {
-          console.error(`❌ Row ${item.rowNumber} failed:`, error.message);
-          failedEnquiries.push({
+          failed.push({
             ...item,
-            error: error.message,
+            error: err.message,
           });
         }
       }
 
       console.log(
-        `✅ Successfully processed ${successfulEnquiries.length} enquiries`,
+        `✅ Bulk upload complete. Success=${successful.length}, Failed=${failed.length}`
       );
-      console.log(`❌ Failed to process ${failedEnquiries.length} enquiries`);
 
-      res.json({
+      return res.json({
         success: true,
-        message: `${successfulEnquiries.length} enquiries uploaded successfully`,
+        message: `${successful.length} enquiries uploaded successfully`,
         results: {
-          success: successfulEnquiries,
-          failed: failedEnquiries.concat(errors),
-          total: successfulEnquiries.length + failedEnquiries.length,
+          success: successful,
+          failed: failed,
+          total: successful.length + failed.length,
         },
       });
     } catch (err) {
-      console.error("💥 Enquiry bulk upload error:", err);
-      res.status(500).json({
+      console.error("💥 Enquiry bulk upload fatal error:", err);
+      return res.status(500).json({
         success: false,
-        message: err.message,
+        message: "Bulk upload failed: " + err.message,
         results: { success: [], failed: [], total: 0 },
       });
     }
-  },
+  }
 );
+
 
 // Get enquiry analytics
 app.get("/api/enquiries/analytics", verifyAuth, async (req, res) => {

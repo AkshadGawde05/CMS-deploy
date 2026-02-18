@@ -2,6 +2,14 @@ import mongoose from "mongoose";
 
 const attendanceSchema = new mongoose.Schema(
   {
+    // Branch assignment
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: false, // Will be set to true after migration
+      index: true,
+    },
+
     // Student attendance (optional - for backward compatibility)
     studentId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -117,6 +125,11 @@ attendanceSchema.index({ lectureId: 1, userId: 1 });
 attendanceSchema.index({ lectureId: 1, status: 1 });
 attendanceSchema.index({ date: -1, status: 1 });
 attendanceSchema.index({ userId: 1, userType: 1, date: -1 });
+
+// Branch-scoped indexes
+attendanceSchema.index({ branchId: 1, date: -1 });
+attendanceSchema.index({ branchId: 1, userId: 1, date: -1 });
+attendanceSchema.index({ branchId: 1, batchId: 1, date: -1 });
 
 // Compound index for efficient daily reports
 attendanceSchema.index({ date: 1, batchId: 1, status: 1 });

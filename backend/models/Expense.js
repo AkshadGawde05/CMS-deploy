@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 
 const ExpenseSchema = new mongoose.Schema({
+  branchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    required: false, // Will be set to true after migration
+    index: true,
+  },
   category: {
     type: String,
     required: true,
@@ -52,6 +58,10 @@ const ExpenseSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
+// Branch-scoped indexes
+ExpenseSchema.index({ branchId: 1, date: -1 });
+ExpenseSchema.index({ branchId: 1, category: 1 });
 
 const Expense = mongoose.model("Expense", ExpenseSchema);
 export default Expense;

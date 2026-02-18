@@ -21,6 +21,12 @@ const DiscountTypeSubSchema = new mongoose.Schema(
 );
 
 const FeePlanSchema = new mongoose.Schema({
+  branchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    required: false, // Will be set to true after migration
+    index: true,
+  },
   batch_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Batches",
@@ -61,5 +67,8 @@ FeePlanSchema.pre("save", function (next) {
   this.updated_at = new Date();
   next();
 });
+
+// Branch-scoped index
+FeePlanSchema.index({ branchId: 1, batch_id: 1 });
 
 export default mongoose.model("FeePlan", FeePlanSchema);

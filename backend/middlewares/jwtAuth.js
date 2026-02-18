@@ -112,6 +112,10 @@ export async function verifyAuth(req, res, next) {
       role: normalizedRole,
       linkedStudents,
       permissions,
+      // Multi-branch support
+      branches: user.branches || [],
+      primaryBranch: user.primaryBranch || null,
+      isSuperAdmin: normalizedRole === "SuperAdmin" || normalizedRole === "Admin",
     };
 
     return next();
