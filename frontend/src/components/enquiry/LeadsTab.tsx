@@ -30,9 +30,14 @@ interface LeadsTabProps {
   interests: string[];
   users: { _id: string; name: string; role: string }[];
   onAction?: () => void;
+  leadCounts?: {
+    cold: number;
+    warm: number;
+    hot: number;
+  };
 }
 
-export default function LeadsTab({ sources, interests, users, onAction }: LeadsTabProps) {
+export default function LeadsTab({ sources, interests, users, onAction, leadCounts }: LeadsTabProps) {
   const { hasPermission } = useAuth();
   const { showToast } = useToast();
   const [leads, setLeads] = useState<EnquiryDTO[]>([]);
@@ -139,6 +144,7 @@ export default function LeadsTab({ sources, interests, users, onAction }: LeadsT
         message: `Status updated to ${newStatus.replace('_', ' ')}`
       });
       fetchLeads();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -161,6 +167,7 @@ export default function LeadsTab({ sources, interests, users, onAction }: LeadsT
         message: 'Contact attempt recorded'
       });
       fetchLeads();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -184,6 +191,7 @@ export default function LeadsTab({ sources, interests, users, onAction }: LeadsT
         message: `Moved forward to ${newStatus.replace('_', ' ')}`
       });
       fetchLeads();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -231,6 +239,7 @@ export default function LeadsTab({ sources, interests, users, onAction }: LeadsT
       });
       setSelectedEnquiries([]);
       fetchLeads();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -315,19 +324,25 @@ export default function LeadsTab({ sources, interests, users, onAction }: LeadsT
       <div className="border-b border-gray-200 mb-4 sm:mb-6 overflow-x-auto">
         <nav className="-mb-px flex space-x-4 sm:space-x-8 min-w-max">
           {[
-            { id: 'cold_lead', label: 'Cold Leads', color: 'text-blue-600 border-blue-500' },
-            { id: 'warm_lead', label: 'Warm Leads', color: 'text-yellow-600 border-yellow-500' },
-            { id: 'hot_lead', label: 'Hot Leads', color: 'text-red-600 border-red-500' }
+            { id: 'cold_lead', label: 'Cold Leads', color: 'text-blue-600 border-blue-500', count: leadCounts?.cold ?? 0 },
+            { id: 'warm_lead', label: 'Warm Leads', color: 'text-yellow-600 border-yellow-500', count: leadCounts?.warm ?? 0 },
+            { id: 'hot_lead', label: 'Hot Leads', color: 'text-red-600 border-red-500', count: leadCounts?.hot ?? 0 }
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setLeadType(tab.id as 'cold_lead' | 'warm_lead' | 'hot_lead')}
-              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition ${leadType === tab.id
+              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition flex items-center gap-2 ${leadType === tab.id
                 ? tab.color
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
             >
-              {tab.label}
+              <span>{tab.label}</span>
+              <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-bold ${leadType === tab.id
+                ? "bg-blue-100 text-blue-600"
+                : "bg-gray-100 text-gray-500"
+                }`}>
+                {tab.count}
+              </span>
             </button>
           ))}
         </nav>

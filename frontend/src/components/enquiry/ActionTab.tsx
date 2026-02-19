@@ -122,6 +122,7 @@ export default function ActionTab({ sources, interests, users, onAction }: Actio
         message: 'Moved to enrolled'
       });
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -140,6 +141,7 @@ export default function ActionTab({ sources, interests, users, onAction }: Actio
         message: 'Marked as lost'
       });
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -158,6 +160,7 @@ export default function ActionTab({ sources, interests, users, onAction }: Actio
         message: 'Moved back to contacted'
       });
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -180,6 +183,7 @@ export default function ActionTab({ sources, interests, users, onAction }: Actio
       });
       setSelectedEnquiries([]);
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',

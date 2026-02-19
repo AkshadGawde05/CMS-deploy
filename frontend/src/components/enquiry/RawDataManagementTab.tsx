@@ -132,6 +132,7 @@ export default function RawDataManagementTab({ sources, interests, users, onActi
         message: 'Enquiry has been moved to cold leads'
       });
       fetchEnquiries();
+      onAction?.();
     } catch (error) {
       console.error("Failed to move enquiry to leads", error);
       showToast({
@@ -156,6 +157,7 @@ export default function RawDataManagementTab({ sources, interests, users, onActi
       });
       setSelectedEnquiries([]);
       fetchEnquiries();
+      onAction?.();
     } catch (error) {
       console.error("Failed to move enquiries to leads", error);
       showToast({
@@ -615,6 +617,7 @@ export default function RawDataManagementTab({ sources, interests, users, onActi
           onSuccess={() => {
             setShowAddModal(false);
             fetchEnquiries();
+            onAction?.();
           }}
         />
       )}
@@ -630,6 +633,7 @@ export default function RawDataManagementTab({ sources, interests, users, onActi
             setShowEditModal(false);
             setSelectedEnquiry(null);
             fetchEnquiries();
+            onAction?.();
           }}
         />
       )}

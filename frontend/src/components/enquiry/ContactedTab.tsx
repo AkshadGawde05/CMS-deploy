@@ -123,6 +123,7 @@ export default function ContactedTab({ sources, interests, users, onAction }: Co
         message: 'Moved back to cold leads'
       });
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -141,6 +142,7 @@ export default function ContactedTab({ sources, interests, users, onAction }: Co
         message: 'Moved to interested'
       });
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -159,6 +161,7 @@ export default function ContactedTab({ sources, interests, users, onAction }: Co
         message: 'Marked as not interested'
       });
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -186,6 +189,7 @@ export default function ContactedTab({ sources, interests, users, onAction }: Co
       });
       setSelectedEnquiries([]);
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -540,7 +544,7 @@ export default function ContactedTab({ sources, interests, users, onAction }: Co
         <EditEnquiryModal
           enquiry={selectedEnquiry}
           onClose={() => { setShowEditModal(false); setSelectedEnquiry(null); }}
-          onSuccess={() => { setShowEditModal(false); setSelectedEnquiry(null); fetchEnquiries(); }}
+          onSuccess={() => { setShowEditModal(false); setSelectedEnquiry(null); fetchEnquiries(); onAction?.(); }}
         />
       )}
 

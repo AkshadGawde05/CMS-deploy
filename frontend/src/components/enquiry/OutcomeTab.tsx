@@ -122,6 +122,7 @@ export default function OutcomeTab({ sources, interests, users, onAction }: Outc
         message: 'Moved back to interested'
       });
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',
@@ -144,6 +145,7 @@ export default function OutcomeTab({ sources, interests, users, onAction }: Outc
       });
       setSelectedEnquiries([]);
       fetchEnquiries();
+      onAction?.();
     } catch {
       showToast({
         type: 'error',

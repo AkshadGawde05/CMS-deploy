@@ -264,6 +264,11 @@ export default function EnquiryManagementPage() {
                 interests={interests}
                 users={users}
                 onAction={fetchCounts}
+                leadCounts={{
+                  cold: detailedCounts.cold_lead,
+                  warm: detailedCounts.warm_lead,
+                  hot: detailedCounts.hot_lead
+                }}
               />
             )}
             {activeTab === "contacted" && (
