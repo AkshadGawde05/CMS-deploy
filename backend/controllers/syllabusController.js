@@ -515,7 +515,75 @@ export const getSyllabusTemplate = async (req, res) => {
       horizontal: "center",
     };
 
-    // Add sample data rows (matching client format)
+    // ⚠️ NO SAMPLE DATA ROWS ADDED HERE - keep Syllabus sheet clean with only headers
+
+    // Add instructions sheet WITH sample data in merged cell format
+    const notesSheet = workbook.addWorksheet("Instructions");
+
+    notesSheet.getCell("A1").value = "Syllabus Bulk Upload Instructions";
+    notesSheet.getCell("A1").font = { bold: true, size: 14 };
+
+    notesSheet.getCell("A3").value = "Template Format:";
+    notesSheet.getCell("A3").font = { bold: true };
+    notesSheet.getCell("A4").value =
+      "• Course - Course/Class name (e.g., 11, 12, B.Tech, etc.)";
+    notesSheet.getCell("A5").value =
+      "• Subject - Subject name (e.g., Physics, Mathematics, etc.)";
+    notesSheet.getCell("A6").value = "• Unit - Unit number (e.g., 1, 2, 3)";
+    notesSheet.getCell("A7").value = "• Chapter No - Chapter number";
+    notesSheet.getCell("A8").value = "• Topic - Main topic name";
+    notesSheet.getCell("A9").value = "• Subtopic - Detailed content/subtopics";
+
+    notesSheet.getCell("A11").value = "Important Notes:";
+    notesSheet.getCell("A11").font = { bold: true };
+    notesSheet.getCell("A12").value =
+      "• The system will automatically handle merged cells";
+    notesSheet.getCell("A13").value =
+      "• You can leave Course, Subject, and Unit cells empty for continuation rows";
+    notesSheet.getCell("A14").value =
+      "• The Course name must exist in the system";
+    notesSheet.getCell("A15").value =
+      "• All topics will be grouped by Course and Academic Year automatically";
+    notesSheet.getCell("A16").value =
+      "• Duplicate entries (same Subject + Topic + Subtopic) will be skipped";
+
+    // ADD EXAMPLE DATA WITH MERGED CELLS FORMAT HERE
+    notesSheet.getCell("A18").value = "Example Data (with merged cells):";
+    notesSheet.getCell("A18").font = { bold: true, size: 12 };
+
+    // Set up columns for example section
+    notesSheet.getColumn(1).width = 12; // Course
+    notesSheet.getColumn(2).width = 20; // Subject
+    notesSheet.getColumn(3).width = 10; // Unit
+    notesSheet.getColumn(4).width = 12; // Chapter No
+    notesSheet.getColumn(5).width = 40; // Topic
+    notesSheet.getColumn(6).width = 100; // Subtopic
+
+    // Header row for example data (row 20)
+    const exampleHeaderRow = 20;
+    notesSheet.getRow(exampleHeaderRow).values = [
+      "Course",
+      "Subject",
+      "Unit",
+      "Chapter No",
+      "Topic",
+      "Subtopic",
+    ];
+    notesSheet.getRow(exampleHeaderRow).font = {
+      bold: true,
+      color: { argb: "FFFFFFFF" },
+    };
+    notesSheet.getRow(exampleHeaderRow).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF4472C4" },
+    };
+    notesSheet.getRow(exampleHeaderRow).alignment = {
+      vertical: "middle",
+      horizontal: "center",
+    };
+
+    // Add sample data rows (21-23)
     const sampleRows = [
       {
         class: "11",
@@ -546,101 +614,69 @@ export const getSyllabusTemplate = async (req, res) => {
       },
     ];
 
+    let currentRow = exampleHeaderRow + 1;
     sampleRows.forEach((rowData) => {
-      worksheet.addRow(rowData);
+      notesSheet.getRow(currentRow).values = [
+        rowData.class,
+        rowData.subject,
+        rowData.unit,
+        rowData.chapter,
+        rowData.topic,
+        rowData.subtopic,
+      ];
+      currentRow++;
     });
 
-    // Apply merged cell styling for demonstration
-    // Merge Class cell for rows 2-4 (sample demonstration)
-    worksheet.mergeCells("A2:A4");
-    worksheet.getCell("A2").value = "11";
-    worksheet.getCell("A2").alignment = {
+    // Apply merged cell styling for demonstration (rows 21-23)
+    // Merge Course cell for rows 21-23
+    notesSheet.mergeCells("A21:A23");
+    notesSheet.getCell("A21").value = "11";
+    notesSheet.getCell("A21").alignment = {
       vertical: "middle",
       horizontal: "center",
     };
 
-    // Merge Subject cell for rows 2-4
-    worksheet.mergeCells("B2:B4");
-    worksheet.getCell("B2").value = "Physics";
-    worksheet.getCell("B2").alignment = {
+    // Merge Subject cell for rows 21-23
+    notesSheet.mergeCells("B21:B23");
+    notesSheet.getCell("B21").value = "Physics";
+    notesSheet.getCell("B21").alignment = {
       vertical: "middle",
       horizontal: "center",
     };
 
-    // Merge Unit cell for rows 2-4
-    worksheet.mergeCells("C2:C4");
-    worksheet.getCell("C2").value = "1";
-    worksheet.getCell("C2").alignment = {
+    // Merge Unit cell for rows 21-23
+    notesSheet.mergeCells("C21:C23");
+    notesSheet.getCell("C21").value = "1";
+    notesSheet.getCell("C21").alignment = {
       vertical: "middle",
       horizontal: "center",
     };
 
-    // Apply borders to all cells
-    worksheet.eachRow((row, rowNumber) => {
-      row.eachCell((cell) => {
+    // Apply borders to example data cells
+    for (let r = exampleHeaderRow; r <= exampleHeaderRow + 3; r++) {
+      for (let c = 1; c <= 6; c++) {
+        const cell = notesSheet.getCell(r, c);
         cell.border = {
           top: { style: "thin" },
           left: { style: "thin" },
           bottom: { style: "thin" },
           right: { style: "thin" },
         };
-      });
-    });
+      }
+    }
 
-    // Set text wrap for subtopic column
-    worksheet.getColumn(6).alignment = { wrapText: true, vertical: "top" };
-
-    // Add instructions sheet
-    const notesSheet = workbook.addWorksheet("Instructions");
-    notesSheet.getCell("A1").value = "Syllabus Bulk Upload Instructions";
-    notesSheet.getCell("A1").font = { bold: true, size: 14 };
-
-    notesSheet.getCell("A3").value = "Template Format:";
-    notesSheet.getCell("A3").font = { bold: true };
-    notesSheet.getCell("A4").value =
-      "• Course - Course/Class name (e.g., 11, 12, B.Tech, etc.)";
-    notesSheet.getCell("A5").value =
-      "• Subject - Subject name (e.g., Physics, Mathematics, etc.)";
-    notesSheet.getCell("A6").value = "• Unit - Unit number (e.g., 1, 2, 3)";
-    notesSheet.getCell("A7").value = "• Chapter No - Chapter number";
-    notesSheet.getCell("A8").value = "• Topic - Main topic name";
-    notesSheet.getCell("A9").value = "• Subtopic - Detailed content/subtopics";
-
-    notesSheet.getCell("A11").value = "Important Notes:";
-    notesSheet.getCell("A11").font = { bold: true };
-    notesSheet.getCell("A12").value =
-      "• The system will automatically handle merged cells";
-    notesSheet.getCell("A13").value =
-      "• You can leave Course, Subject, and Unit cells empty for continuation rows";
-    notesSheet.getCell("A14").value =
-      "• The Course name must exist in the system";
-    notesSheet.getCell("A15").value =
-      "• All topics will be grouped by Course and Academic Year automatically";
-    notesSheet.getCell("A16").value =
-      "• Duplicate entries (same Subject + Topic + Subtopic) will be skipped";
-
-    notesSheet.getCell("A18").value = "Example Structure:";
-    notesSheet.getCell("A18").font = { bold: true };
-    notesSheet.getCell("A19").value =
-      "Course | Subject | Unit | Chapter | Topic             | Subtopic";
-    notesSheet.getCell("A20").value =
-      "11    | Physics | 1    | 1       | Basic Math        | Introduction to...";
-    notesSheet.getCell("A21").value =
-      "      |         |      | 2       | Units & Measure   | Need for measurement...";
-    notesSheet.getCell("A22").value =
-      "      |         |      | 3       | Motion in Line    | Frame of reference...";
-
-    notesSheet.getColumn("A").width = 80;
+    // Set text wrap for subtopic column in example
+    notesSheet.getColumn(6).alignment = { wrapText: true, vertical: "top" };
 
     const buffer = await workbook.xlsx.writeBuffer();
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="syllabus_template.xlsx"',
+      'attachment; filename="syllabus_template.xlsx"'
     );
     res.send(buffer);
   } catch (error) {
@@ -652,6 +688,7 @@ export const getSyllabusTemplate = async (req, res) => {
     });
   }
 };
+
 
 // Bulk upload syllabi - PRODUCTION-GRADE with merged cell handling
 export const bulkUploadSyllabi = async (req, res) => {

@@ -1,117 +1,293 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Edit, Eye, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
-import { getContactedEnquiries, updateEnquiryStatus, type EnquiryDTO } from "@/lib/api";
+import {
+  Search,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  Phone,
+  Mail,
+  MessageCircle,
+  Edit,
+  Eye,
+  Trash2,
+  TrendingUp,
+  TrendingDown
+} from "lucide-react";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { useToast } from "@/components/ui/Toast";
+import { getContactedEnquiries, updateEnquiryStatus, type EnquiryDTO, deleteEnquiry } from "@/lib/api";
 import EditEnquiryModal from "./EditEnquiryModal";
 import ViewEnquiryModal from "./ViewEnquiryModal";
 
-type TabType = "rawdata" | "leads" | "contacted" | "action" | "outcome";
-
-interface ContactedTabProps {
-  onNavigate?: (tab: TabType) => void;
-  count?: number;
-}
-
-export default function ContactedTab({ onNavigate, count = 0 }: ContactedTabProps) {
+export default function ContactedTab() {
+  const { hasPermission } = useAuth();
+  const { showToast } = useToast();
   const [enquiries, setEnquiries] = useState<EnquiryDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [editingEnquiry, setEditingEnquiry] = useState<EnquiryDTO | null>(null);
-  const [viewingEnquiry, setViewingEnquiry] = useState<EnquiryDTO | null>(null);
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [selectedEnquiry, setSelectedEnquiry] = useState<EnquiryDTO | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+
+  // Selection and Pagination state
+  const [selectedEnquiries, setSelectedEnquiries] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const LIMIT = 50;
+
+  const sources = ["Website", "Facebook", "Google Ads", "Referral", "Walk-in", "Phone Call"];
 
   const fetchEnquiries = useCallback(async () => {
     try {
       setLoading(true);
-      const params: Record<string, string | number> = { page: 1, limit: 100 };
+      const params: Record<string, string | number> = { page, limit: LIMIT };
       if (search) params.search = search;
-      
+      if (sourceFilter !== 'all') params.source = sourceFilter;
+
       const response = await getContactedEnquiries(params);
-      setEnquiries(response);
-    } catch (error) {
-      console.error("Failed to fetch contacted enquiries:", error);
+
+      if (response && response.success) {
+        setEnquiries(response.data || []);
+        if (response.pagination) {
+          setTotalPages(response.pagination.total || 1);
+          setTotalRecords(response.pagination.totalRecords || 0);
+        }
+      } else {
+        setEnquiries([]);
+      }
+    } catch {
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to fetch contacted enquiries'
+      });
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [page, search, sourceFilter, showToast]);
 
   useEffect(() => {
     fetchEnquiries();
-  }, [search, fetchEnquiries]);
+  }, [fetchEnquiries]);
 
-  const handleStatusChange = async (id: string, newStatus: string) => {
-    try {
-      await updateEnquiryStatus(id, newStatus, `Status updated to ${newStatus}`);
-      fetchEnquiries();
-    } catch {
-      alert("Failed to update status");
-    }
-  };
+  useEffect(() => {
+    setPage(1);
+    setSelectedEnquiries([]);
+  }, [search, sourceFilter]);
 
-  const handleMoveForward = async (id: string) => {
-    try {
-      // Move from contacted directly to interested (next step in action tab)
-      await updateEnquiryStatus(id, 'interested', `Moved forward to interested from contacted`);
-      fetchEnquiries();
-    } catch {
-      alert("Failed to move forward");
+  const handleDelete = async (id: string) => {
+    if (confirm("Are you sure you want to delete this enquiry?")) {
+      try {
+        await deleteEnquiry(id);
+        showToast({
+          type: 'success',
+          title: 'Success',
+          message: 'Enquiry deleted successfully'
+        });
+        fetchEnquiries();
+      } catch {
+        showToast({
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to delete enquiry'
+        });
+      }
     }
   };
 
   const handleMoveBack = async (id: string) => {
     try {
-      // Move back from contacted to cold_lead (previous step in leads tab)
-      await updateEnquiryStatus(id, 'cold_lead', `Moved back to cold lead from contacted`);
+      await updateEnquiryStatus(id, 'cold_lead', 'Moved back from contacted');
+      showToast({
+        type: 'success',
+        title: 'Success',
+        message: 'Moved back to cold leads'
+      });
       fetchEnquiries();
     } catch {
-      alert("Failed to move back");
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to move back'
+      });
     }
   };
 
+  const handleMoveInterested = async (id: string) => {
+    try {
+      await updateEnquiryStatus(id, 'interested', 'Moved to interested from contacted');
+      showToast({
+        type: 'success',
+        title: 'Success',
+        message: 'Moved to interested'
+      });
+      fetchEnquiries();
+    } catch {
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to move to interested'
+      });
+    }
+  };
+
+  const handleMoveNotInterested = async (id: string) => {
+    try {
+      await updateEnquiryStatus(id, 'not_interested', 'Marked as not interested from contacted');
+      showToast({
+        type: 'success',
+        title: 'Success',
+        message: 'Marked as not interested'
+      });
+      fetchEnquiries();
+    } catch {
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to mark as not interested'
+      });
+    }
+  };
+
+  const handleBulkMove = async (targetStatus: 'interested' | 'not_interested' | 'cold_lead') => {
+    if (selectedEnquiries.length === 0) return;
+    try {
+      for (const id of selectedEnquiries) {
+        let reason = '';
+        if (targetStatus === 'interested') reason = 'Bulk moved to interested';
+        else if (targetStatus === 'not_interested') reason = 'Bulk marked as not interested';
+        else reason = 'Bulk moved back to cold leads';
+
+        await updateEnquiryStatus(id, targetStatus, reason);
+      }
+      showToast({
+        type: 'success',
+        title: 'Success',
+        message: `${selectedEnquiries.length} enquiries moved successfully`
+      });
+      setSelectedEnquiries([]);
+      fetchEnquiries();
+    } catch {
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Bulk action failed'
+      });
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedEnquiries.length === enquiries.length) {
+      setSelectedEnquiries([]);
+    } else {
+      setSelectedEnquiries(enquiries.map(e => e._id));
+    }
+  };
+
+  const handleSelectEnquiry = (id: string) => {
+    if (selectedEnquiries.includes(id)) {
+      setSelectedEnquiries(selectedEnquiries.filter(eid => eid !== id));
+    } else {
+      setSelectedEnquiries([...selectedEnquiries, id]);
+    }
+  };
+
+  const isSelected = (id: string) => selectedEnquiries.includes(id);
+
   return (
     <div className="p-4 sm:p-6">
-      {/* Header with Back Button */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <button
-          onClick={() => onNavigate?.("leads")}
-          className="flex-shrink-0 p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition border-2 border-blue-300 shadow-sm"
-          title="Back to Leads"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <div className="flex items-center gap-2 w-full">
-          <div>
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Contacted Enquiries</h2>
-            <p className="text-xs sm:text-sm text-gray-600">Manage enquiries that have been contacted</p>
+        <div>
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Contacted Enquiries</h2>
+          <p className="text-xs sm:text-sm text-gray-600">Track and manage enquiries already contacted</p>
+        </div>
+
+        {selectedEnquiries.length > 0 && (
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <span className="text-sm text-gray-600 font-medium whitespace-nowrap">
+              {selectedEnquiries.length} selected
+            </span>
+            <div className="flex gap-1 overflow-x-auto">
+              <button
+                onClick={() => handleBulkMove('interested')}
+                className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition"
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                Interested
+              </button>
+              <button
+                onClick={() => handleBulkMove('not_interested')}
+                className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition"
+              >
+                <TrendingDown className="h-3.5 w-3.5" />
+                Not Interested
+              </button>
+              <button
+                onClick={() => handleBulkMove('cold_lead')}
+                className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Move Back
+              </button>
+            </div>
           </div>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+          <input
+            type="text"
+            placeholder="Search contacted..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+          />
+        </div>
+
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 pointer-events-none" />
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700 bg-white"
+          >
+            <option value="all">All Sources</option>
+            {sources.map(source => (
+              <option key={source} value={source}>{source}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-4 sm:mb-6">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-        <input
-          type="text"
-          placeholder="Search contacted enquiries..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
-        />
-      </div>
-
-      {/* Desktop Enquiries Table - Hidden on mobile */}
+      {/* Desktop Table View */}
       <div className="hidden lg:block overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                <input
+                  type="checkbox"
+                  checked={enquiries.length > 0 && selectedEnquiries.length === enquiries.length}
+                  onChange={handleSelectAll}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Contact Info
+                Name & Contact
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Source & Interest
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Contact Date
+                Last Contacted
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
@@ -120,67 +296,49 @@ export default function ContactedTab({ onNavigate, count = 0 }: ContactedTabProp
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {loading ? (
-              <tr>
-                <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
-                  Loading...
-                </td>
-              </tr>
+              <tr><td colSpan={5} className="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
             ) : enquiries.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
-                  No contacted enquiries found
-                </td>
-              </tr>
+              <tr><td colSpan={5} className="px-6 py-4 text-center text-gray-500">No enquiries found</td></tr>
             ) : (
               enquiries.map((enquiry) => (
                 <tr key={enquiry._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {enquiry.firstName} {enquiry.lastName}
-                      </div>
-                      <div className="text-sm text-gray-500">{enquiry.phone}</div>
-                      {enquiry.email && (
-                        <div className="text-sm text-gray-500">{enquiry.email}</div>
-                      )}
-                    </div>
+                    <input
+                      type="checkbox"
+                      checked={isSelected(enquiry._id)}
+                      onChange={() => handleSelectEnquiry(enquiry._id)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="space-y-1">
-                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                        {enquiry.source}
-                      </span>
-                      <div>
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                          {enquiry.interest}
-                        </span>
-                      </div>
+                    <div className="text-sm font-medium text-gray-900">{enquiry.fullName || enquiry.name}</div>
+                    <div className="text-sm text-gray-500">{enquiry.phone}</div>
+                    {enquiry.email && <div className="text-sm text-gray-500">{enquiry.email}</div>}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex flex-col gap-1">
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800 w-fit">{enquiry.source}</span>
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 w-fit">{enquiry.interest}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {enquiry.lastContactedAt 
-                      ? new Date(enquiry.lastContactedAt).toLocaleDateString()
-                      : "Recently contacted"
-                    }
+                    {enquiry.lastContactedAt ? new Date(enquiry.lastContactedAt).toLocaleDateString() : "Never"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => setViewingEnquiry(enquiry)}
-                        className="p-1 text-gray-500 hover:text-blue-600 transition"
-                        title="View Details"
+                        onClick={() => { setSelectedEnquiry(enquiry); setShowViewModal(true); }}
+                        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      
+
                       <button
-                        onClick={() => setEditingEnquiry(enquiry)}
+                        onClick={() => { setSelectedEnquiry(enquiry); setShowEditModal(true); }}
                         className="p-1.5 text-purple-600 hover:bg-purple-50 rounded transition"
-                        title="Edit"
                       >
                         <Edit className="h-4 w-4" />
                       </button>
-
 
                       <button
                         onClick={() => handleMoveBack(enquiry._id)}
@@ -189,31 +347,28 @@ export default function ContactedTab({ onNavigate, count = 0 }: ContactedTabProp
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </button>
+
                       <button
-                        onClick={() => handleMoveForward(enquiry._id)}
+                        onClick={() => handleMoveInterested(enquiry._id)}
                         className="p-1.5 text-green-600 hover:bg-green-50 rounded transition"
-                        title="Move Forward"
+                        title="Mark Interested"
                       >
-                        <ChevronRight className="h-4 w-4" />
+                        <TrendingUp className="h-4 w-4" />
                       </button>
 
-                      
-                      
                       <button
-                        onClick={() => handleStatusChange(enquiry._id, 'interested')}
-                        className="px-2 py-1 text-xs font-medium text-green-700 bg-green-100 border border-green-200 rounded hover:bg-green-200 transition"
-                        title="Mark as Interested"
+                        onClick={() => handleMoveNotInterested(enquiry._id)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
+                        title="Mark Not Interested"
                       >
-                        Interested
+                        <TrendingDown className="h-4 w-4" />
                       </button>
-                      
-                      <button
-                        onClick={() => handleStatusChange(enquiry._id, 'not_interested')}
-                        className="px-2 py-1 text-xs font-medium text-red-700 bg-red-100 border border-red-200 rounded hover:bg-red-200 transition"
-                        title="Mark as Not Interested"
-                      >
-                        Not Interested
-                      </button>
+
+                      <div className="flex items-center gap-0.5 border-l border-gray-200 ml-1 pl-1">
+                        <button className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded transition"><Phone className="h-4 w-4" /></button>
+                        <button className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded transition"><MessageCircle className="h-4 w-4" /></button>
+                        <button onClick={() => handleDelete(enquiry._id)} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition"><Trash2 className="h-4 w-4" /></button>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -223,110 +378,94 @@ export default function ContactedTab({ onNavigate, count = 0 }: ContactedTabProp
         </table>
       </div>
 
-      {/* Mobile Card View - Visible on smaller screens */}
-      <div className="lg:hidden space-y-3 sm:space-y-4">
+      {/* Mobile Card View */}
+      <div className="lg:hidden space-y-3">
         {loading ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 text-center text-sm text-gray-500">
-            Loading...
-          </div>
+          <div className="bg-white rounded-lg p-6 text-center text-sm text-gray-500 border border-gray-200">Loading...</div>
         ) : enquiries.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 text-center text-sm text-gray-500">
-            No contacted enquiries found
-          </div>
+          <div className="bg-white rounded-lg p-6 text-center text-sm text-gray-500 border border-gray-200">No enquiries found</div>
         ) : (
           enquiries.map((enquiry) => (
             <div key={enquiry._id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition">
-              <div className="mb-3 pb-3 border-b border-gray-100">
-                <div className="text-base font-semibold text-gray-900">{enquiry.firstName} {enquiry.lastName}</div>
-                <div className="text-sm text-gray-600 mt-1">{enquiry.phone}</div>
-                {enquiry.email && <div className="text-sm text-gray-600 break-all">{enquiry.email}</div>}
+              <div className="flex items-start gap-3 mb-3 pb-3 border-b border-gray-100">
+                <input
+                  type="checkbox"
+                  checked={isSelected(enquiry._id)}
+                  onChange={() => handleSelectEnquiry(enquiry._id)}
+                  className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-base font-semibold text-gray-900 break-words">{enquiry.fullName || enquiry.name}</div>
+                  <div className="text-sm text-gray-600 mt-1">{enquiry.phone}</div>
+                </div>
               </div>
 
               <div className="space-y-2 mb-3">
-                <div className="flex items-center justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-xs font-medium text-gray-500">Source:</span>
-                  <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                    {enquiry.source}
-                  </span>
+                  <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">{enquiry.source}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-xs font-medium text-gray-500">Interest:</span>
-                  <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                    {enquiry.interest}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-500">Contact Date:</span>
-                  <span className="text-sm text-gray-900">
-                    {enquiry.lastContactedAt ? new Date(enquiry.lastContactedAt).toLocaleDateString() : "Recently contacted"}
-                  </span>
+                  <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">{enquiry.interest}</span>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-1 pt-3 border-t border-gray-100">
-                <button
-                  onClick={() => setViewingEnquiry(enquiry)}
-                  className="p-2 text-gray-600 hover:bg-gray-100 rounded transition"
-                  title="View Details"
-                >
-                  <Eye className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => setEditingEnquiry(enquiry)}
-                  className="p-2 text-purple-600 hover:bg-purple-50 rounded transition"
-                  title="Edit"
-                >
-                  <Edit className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => handleMoveForward(enquiry._id)}
-                  className="p-2 text-green-600 hover:bg-green-50 rounded transition"
-                  title="Forward"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => handleMoveBack(enquiry._id)}
-                  className="p-2 text-orange-600 hover:bg-orange-50 rounded transition"
-                  title="Back"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => handleStatusChange(enquiry._id, 'interested')}
-                  className="px-2 py-1 text-xs font-medium text-green-700 bg-green-100 border border-green-200 rounded hover:bg-green-200 transition"
-                >
-                  Interested
-                </button>
-                <button
-                  onClick={() => handleStatusChange(enquiry._id, 'not_interested')}
-                  className="px-2 py-1 text-xs font-medium text-red-700 bg-red-100 border border-red-200 rounded hover:bg-red-200 transition"
-                >
-                  Not Interested
-                </button>
+                <button onClick={() => { setSelectedEnquiry(enquiry); setShowViewModal(true); }} className="p-2 text-gray-600 hover:bg-gray-100 rounded transition"><Eye className="h-4 w-4" /></button>
+                <button onClick={() => { setSelectedEnquiry(enquiry); setShowEditModal(true); }} className="p-2 text-purple-600 hover:bg-purple-50 rounded transition"><Edit className="h-4 w-4" /></button>
+                <button onClick={() => handleMoveInterested(enquiry._id)} className="p-2 text-green-600 hover:bg-green-50 rounded transition" title="Mark Interested"><TrendingUp className="h-4 w-4" /></button>
+                <button onClick={() => handleMoveNotInterested(enquiry._id)} className="p-2 text-red-600 hover:bg-red-50 rounded transition" title="Mark Not Interested"><TrendingDown className="h-4 w-4" /></button>
+                <button onClick={() => handleMoveBack(enquiry._id)} className="p-2 text-orange-600 hover:bg-orange-50 rounded transition"><ChevronLeft className="h-4 w-4" /></button>
+                <button className="p-2 text-green-600 hover:bg-green-50 rounded transition"><Phone className="h-4 w-4" /></button>
+                <button onClick={() => handleDelete(enquiry._id)} className="p-2 text-red-600 hover:bg-red-50 rounded transition"><Trash2 className="h-4 w-4" /></button>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* Edit Modal */}
-      {editingEnquiry && (
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 border-t border-gray-200 pt-4">
+          <div className="text-sm text-gray-500">
+            Showing {((page - 1) * LIMIT) + 1} to {Math.min(page * LIMIT, totalRecords)} of {totalRecords} entries
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50 transition"
+            >
+              Previous
+            </button>
+            <span className="px-3 py-1 text-sm bg-blue-50 text-blue-600 border border-blue-200 rounded">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p: number) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50 transition"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
+      {showEditModal && selectedEnquiry && (
         <EditEnquiryModal
-          enquiry={editingEnquiry}
-          onClose={() => setEditingEnquiry(null)}
-          onSuccess={() => {
-            setEditingEnquiry(null);
-            fetchEnquiries();
-          }}
+          enquiry={selectedEnquiry}
+          onClose={() => { setShowEditModal(false); setSelectedEnquiry(null); }}
+          onSuccess={() => { setShowEditModal(false); setSelectedEnquiry(null); fetchEnquiries(); }}
         />
       )}
 
-      {/* View Modal */}
-      {viewingEnquiry && (
+      {showViewModal && selectedEnquiry && (
         <ViewEnquiryModal
-          enquiry={viewingEnquiry}
-          onClose={() => setViewingEnquiry(null)}
+          enquiry={selectedEnquiry}
+          onClose={() => { setShowViewModal(false); setSelectedEnquiry(null); }}
         />
       )}
     </div>

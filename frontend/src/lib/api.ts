@@ -1220,43 +1220,35 @@ export const getEnquiryAnalytics = async (): Promise<{
 
 // Helper functions for specific statuses
 export const getRawEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('raw', params);
-  return response.data;  // This is already the data array from the API response
+  return await getEnquiriesByStatus('raw', params);
 };
 
 export const getColdLeads = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('cold_lead', params);
-  return response.data;
+  return await getEnquiriesByStatus('cold_lead', params);
 };
 
 export const getWarmLeads = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('warm_lead', params);
-  return response.data;
+  return await getEnquiriesByStatus('warm_lead', params);
 };
 
 export const getHotLeads = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('hot_lead', params);
-  return response.data;
+  return await getEnquiriesByStatus('hot_lead', params);
 };
 
 export const getContactedEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('contacted', params);
-  return response.data;
+  return await getEnquiriesByStatus('contacted', params);
 };
 
 export const getInterestedEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('interested', params);
-  return response.data;
+  return await getEnquiriesByStatus('interested', params);
 };
 
 export const getEnrolledEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('enrolled', params);
-  return response.data;
+  return await getEnquiriesByStatus('enrolled', params);
 };
 
 export const getLostEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('lost', params);
-  return response.data;
+  return await getEnquiriesByStatus('lost', params);
 };
 
 // Get count for each status

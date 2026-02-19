@@ -59,10 +59,10 @@ export default function EnquiryManagementPage() {
   // Fetch counts on component mount and set up refresh interval
   useEffect(() => {
     fetchCounts();
-    
+
     // Refresh counts every 30 seconds to keep them updated
     const interval = setInterval(fetchCounts, 30000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -70,16 +70,16 @@ export default function EnquiryManagementPage() {
     try {
       setLoadingCounts(true);
       const response = await getEnquiryCounts();
-      
+
       console.log("🔍 Full API response:", response);
-      
+
       if (response && response.success && response.data) {
         // Ensure all values are numbers and not NaN
         const safeNumber = (value: unknown): number => {
           const num = Number(value);
           return isNaN(num) ? 0 : num;
         };
-        
+
         const detailed: DetailedCounts = {
           raw: safeNumber(response.data.raw),
           cold_lead: safeNumber(response.data.cold_lead),
@@ -91,7 +91,7 @@ export default function EnquiryManagementPage() {
           enrolled: safeNumber(response.data.enrolled),
           lost: safeNumber(response.data.lost),
         };
-        
+
         const newCounts = {
           rawdata: detailed.raw,
           leads: detailed.cold_lead + detailed.warm_lead + detailed.hot_lead,
@@ -99,7 +99,7 @@ export default function EnquiryManagementPage() {
           action: detailed.interested + detailed.not_interested,
           outcome: detailed.enrolled + detailed.lost
         };
-        
+
         console.log("📊 Setting counts:", newCounts);
         console.log("📊 Setting detailed counts:", detailed);
         setDetailedCounts(detailed);
@@ -181,66 +181,63 @@ export default function EnquiryManagementPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                  {countsError && (
-                    <span className="text-xs text-red-600">⚠️ Counts unavailable</span>
-                  )}
-                  <button
-                    onClick={fetchCounts}
-                    disabled={loadingCounts}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition disabled:opacity-50 whitespace-nowrap ${
-                      countsError 
-                        ? "text-red-600 bg-red-50 border border-red-200 hover:bg-red-100"
-                        : "text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100"
+                {countsError && (
+                  <span className="text-xs text-red-600">⚠️ Counts unavailable</span>
+                )}
+                <button
+                  onClick={fetchCounts}
+                  disabled={loadingCounts}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition disabled:opacity-50 whitespace-nowrap ${countsError
+                      ? "text-red-600 bg-red-50 border border-red-200 hover:bg-red-100"
+                      : "text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100"
                     }`}
-                  >
-                    {loadingCounts ? "Refreshing..." : countsError ? "Retry" : "Refresh"}
-                  </button>
-                </div>
+                >
+                  {loadingCounts ? "Refreshing..." : countsError ? "Retry" : "Refresh"}
+                </button>
               </div>
             </div>
+          </div>
 
-            {/* Tabs */}
-            <div className="bg-white rounded-lg border border-gray-200 p-2 mb-3 sm:mb-4 overflow-x-auto">
-              <div className="flex gap-1 min-w-max">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 sm:flex-none whitespace-nowrap px-3 py-2 rounded-lg font-medium text-xs transition-colors ${
-                      activeTab === tab.id
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-50 text-gray-700 hover:bg-gray-100"
+          {/* Tabs */}
+          <div className="bg-white rounded-lg border border-gray-200 p-2 mb-3 sm:mb-4 overflow-x-auto">
+            <div className="flex gap-1 min-w-max">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex-1 sm:flex-none whitespace-nowrap px-3 py-2 rounded-lg font-medium text-xs transition-colors ${activeTab === tab.id
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-50 text-gray-700 hover:bg-gray-100"
                     }`}
-                  >
-                    <span className="hidden sm:inline">{tab.label}</span>
-                    <span className="sm:hidden">
-                      {tab.label === "Raw Data Management" ? "Raw" : 
-                       tab.label === "Contacted" ? "Contact" :
-                       tab.label}
-                    </span>
-                    <span
-                      className={`ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full inline-flex items-center justify-center min-w-[20px] ${
-                        activeTab === tab.id
-                          ? "bg-blue-500 text-white"
-                          : "bg-gray-200 text-gray-700"
+                >
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="sm:hidden">
+                    {tab.label === "Raw Data Management" ? "Raw" :
+                      tab.label === "Contacted" ? "Contact" :
+                        tab.label}
+                  </span>
+                  <span
+                    className={`ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full inline-flex items-center justify-center min-w-[20px] ${activeTab === tab.id
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-200 text-gray-700"
                       }`}
-                    >
-                      {loadingCounts ? "..." : (isNaN(tab.count) ? "0" : tab.count)}
-                    </span>
-                  </button>
-                ))}
-              </div>
+                  >
+                    {loadingCounts ? "..." : (isNaN(tab.count) ? "0" : tab.count)}
+                  </span>
+                </button>
+              ))}
             </div>
+          </div>
 
-            {/* Tab Content */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              {activeTab === "rawdata" && <RawDataManagementTab onNavigate={setActiveTab} count={detailedCounts.raw} />}
-              {activeTab === "leads" && <LeadsTab onNavigate={setActiveTab} counts={{ cold: detailedCounts.cold_lead, warm: detailedCounts.warm_lead, hot: detailedCounts.hot_lead }} />}
-              {activeTab === "contacted" && <ContactedTab onNavigate={setActiveTab} count={detailedCounts.contacted} />}
-              {activeTab === "action" && <ActionTab onNavigate={setActiveTab} counts={{ interested: detailedCounts.interested, not_interested: detailedCounts.not_interested }} />}
-              {activeTab === "outcome" && <OutcomeTab onNavigate={setActiveTab} counts={{ enrolled: detailedCounts.enrolled, lost: detailedCounts.lost }} />}
-            </div>
-          </main>
+          {/* Tab Content */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            {activeTab === "rawdata" && <RawDataManagementTab />}
+            {activeTab === "leads" && <LeadsTab />}
+            {activeTab === "contacted" && <ContactedTab />}
+            {activeTab === "action" && <ActionTab />}
+            {activeTab === "outcome" && <OutcomeTab />}
+          </div>
+        </main>
       </div>
     </ProtectedRoute>
   );

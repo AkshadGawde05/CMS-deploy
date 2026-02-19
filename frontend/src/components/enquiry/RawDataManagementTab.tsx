@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { 
-  Search, 
-  Filter, 
-  Upload, 
-  Plus, 
-  Edit, 
-  Trash2, 
+import {
+  Search,
+  Filter,
+  Upload,
+  Plus,
+  Edit,
+  Trash2,
   Eye,
   ArrowRight
 } from "lucide-react";
@@ -25,12 +25,8 @@ interface RawEnquiry extends EnquiryDTO {
   status: "raw";
 }
 
-interface RawDataManagementTabProps {
-  onNavigate?: (tab: TabType) => void;
-  count?: number;
-}
 
-export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataManagementTabProps) {
+export default function RawDataManagementTab() {
   const { hasPermission } = useAuth();
   const { showToast } = useToast();
   const [enquiries, setEnquiries] = useState<RawEnquiry[]>([]);
@@ -38,7 +34,7 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [interestFilter, setInterestFilter] = useState("all");
-  
+
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -47,6 +43,12 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
   const [selectedEnquiry, setSelectedEnquiry] = useState<RawEnquiry | null>(null);
   const [selectedEnquiries, setSelectedEnquiries] = useState<string[]>([]);
 
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const LIMIT = 50;
+
   const sources = ["Website", "Facebook", "Google Ads", "Referral", "Walk-in", "Phone Call"];
   const interests = ["Full Stack", "Data Science", "Digital Marketing", "UI/UX", "Python", "Java"];
 
@@ -54,21 +56,23 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
     try {
       setLoading(true);
       console.log("🔄 Fetching enquiries...");
-      const params: Record<string, string | number> = { page: 1, limit: 100 };
+      const params: Record<string, string | number> = { page, limit: LIMIT };
       if (search) params.search = search;
       if (sourceFilter !== 'all') params.source = sourceFilter;
       if (interestFilter !== 'all') params.interest = interestFilter;
-      
+
       const response = await getRawEnquiries(params);
       console.log("📊 Enquiries response:", response);
-      console.log("📊 Response type:", typeof response);
-      console.log("📊 Response keys:", Object.keys(response || {}));
-      
-      // Handle both possible response structures
-      const enquiriesData = Array.isArray(response) ? response : (response?.data || []);
-      console.log("📊 Enquiries data:", enquiriesData);
-      
-      setEnquiries(enquiriesData as RawEnquiry[]);
+
+      if (response && response.success) {
+        setEnquiries((response.data || []) as RawEnquiry[]);
+        if (response.pagination) {
+          setTotalPages(response.pagination.total || 1);
+          setTotalRecords(response.pagination.totalRecords || 0);
+        }
+      } else {
+        setEnquiries([]);
+      }
       console.log("✅ Enquiries updated in state");
     } catch (error) {
       console.error("Failed to fetch enquiries", error);
@@ -80,11 +84,16 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
     } finally {
       setLoading(false);
     }
-  }, [search, sourceFilter, interestFilter, showToast]);
+  }, [page, search, sourceFilter, interestFilter, showToast]);
 
   useEffect(() => {
     fetchEnquiries();
   }, [fetchEnquiries]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [search, sourceFilter, interestFilter]);
 
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this enquiry?")) {
@@ -128,7 +137,7 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
 
   const handleBulkMoveToLeads = async () => {
     if (selectedEnquiries.length === 0) return;
-    
+
     try {
       for (const id of selectedEnquiries) {
         await updateEnquiryStatus(id, 'cold_lead', 'Bulk moved to cold leads');
@@ -150,23 +159,8 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
     }
   };
 
-  const filteredEnquiries = enquiries.filter((enquiry) => {
-    const searchTerm = search.toLowerCase();
-    const fullName = enquiry.fullName || `${enquiry.firstName || ''} ${enquiry.lastName || ''}`.trim() || enquiry.name || '';
-    
-    const matchesSearch = 
-      fullName.toLowerCase().includes(searchTerm) ||
-      (enquiry.firstName || '').toLowerCase().includes(searchTerm) ||
-      (enquiry.lastName || '').toLowerCase().includes(searchTerm) ||
-      enquiry.phone.includes(search) ||
-      enquiry.email?.toLowerCase().includes(searchTerm) ||
-      (enquiry.name || '').toLowerCase().includes(searchTerm); // backward compatibility
-    
-    const matchesSource = sourceFilter === "all" || enquiry.source === sourceFilter;
-    const matchesInterest = interestFilter === "all" || enquiry.interest === interestFilter;
-    
-    return matchesSearch && matchesSource && matchesInterest;
-  });
+  // No longer need client-side filtering since API handles it
+  const filteredEnquiries = enquiries;
 
   const handleSelectAll = () => {
     if (selectedEnquiries.length === filteredEnquiries.length) {
@@ -194,7 +188,7 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Raw Data Management</h2>
           <p className="text-xs sm:text-sm text-gray-600">Manage raw enquiry data and move to leads</p>
         </div>
-        
+
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           {hasPermission("canEditUsers") && (
             <>
@@ -377,7 +371,7 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      
+
                       {hasPermission("canEditUsers") && (
                         <button
                           onClick={() => {
@@ -390,7 +384,7 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
                           <Edit className="h-4 w-4" />
                         </button>
                       )}
-                      
+
                       <button
                         onClick={() => handleMoveToLeads(enquiry._id)}
                         className="p-1 text-gray-500 hover:text-green-600 transition"
@@ -398,7 +392,7 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
                       >
                         <ArrowRight className="h-4 w-4" />
                       </button>
-                      
+
                       {hasPermission("canEditUsers") && (
                         <button
                           onClick={() => handleDelete(enquiry._id)}
@@ -489,7 +483,7 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
                 >
                   <Eye className="h-4 w-4" />
                 </button>
-                
+
                 {hasPermission("canEditUsers") && (
                   <button
                     onClick={() => {
@@ -502,7 +496,7 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
                     <Edit className="h-4 w-4" />
                   </button>
                 )}
-                
+
                 <button
                   onClick={() => handleMoveToLeads(enquiry._id)}
                   className="p-2 text-green-600 hover:bg-green-50 rounded transition"
@@ -510,7 +504,7 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
                 >
                   <ArrowRight className="h-4 w-4" />
                 </button>
-                
+
                 {hasPermission("canEditUsers") && (
                   <button
                     onClick={() => handleDelete(enquiry._id)}
@@ -525,6 +519,34 @@ export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataM
           ))
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 border-t border-gray-200 pt-4">
+          <div className="text-sm text-gray-500">
+            Showing {((page - 1) * LIMIT) + 1} to {Math.min(page * LIMIT, totalRecords)} of {totalRecords} entries
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50 transition"
+            >
+              Previous
+            </button>
+            <span className="px-3 py-1 text-sm bg-blue-50 text-blue-600 border border-blue-200 rounded">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50 transition"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       {showAddModal && (
