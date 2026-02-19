@@ -670,8 +670,11 @@ export interface FeePlanDTO {
   discount_types?: Array<{ code: string; name: string; discount_percent: number }>;
 }
 
-export const getFeePlans = async () => {
-  const { data } = await api.get<{ success: boolean; plans: FeePlanDTO[] }>(`/api/fee-plans`);
+export const getFeePlans = async (filters?: { batch_id?: string }) => {
+  const params = new URLSearchParams();
+  if (filters?.batch_id) params.append('batch_id', filters.batch_id);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const { data } = await api.get<{ success: boolean; plans: FeePlanDTO[] }>(`/api/fee-plans${suffix}`);
   return data;
 };
 

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { X, User, Upload, GraduationCap, Users as UsersIcon } from 'lucide-react';
-import { createStudent, updateStudent, getAllCourses, getAllBatches, getParentsByStudent } from '@/lib/api';
+import { createStudent, updateStudent, getAllCourses, getAllBatches, getParentsByStudent, getFeePlans } from '@/lib/api';
 import type { CourseDTO, BatchDTO } from '@/lib/api';
 
 type StudentLike = {
@@ -28,14 +28,14 @@ export default function AddStudentModal({ student, onClose, onSuccess }: AddStud
   const [courses, setCourses] = useState<CourseDTO[]>([]);
   const [batches, setBatches] = useState<BatchDTO[]>([]);
   const [filteredBatches, setFilteredBatches] = useState<BatchDTO[]>([]);
-  const [feePlans, setFeePlans] = useState<Array<{ 
-    _id: string; 
-    total_amount: number; 
+  const [feePlans, setFeePlans] = useState<Array<{
+    _id: string;
+    total_amount: number;
     num_installments: number;
-    discount_types: Array<{ code: string; name: string; discount_percent: number }> 
+    discount_types: Array<{ code: string; name: string; discount_percent: number }>
   }>>([]);
   const [discountTypes, setDiscountTypes] = useState<Array<{ code: string; name: string; discount_percent: number }>>([]);
-  
+
   const [formData, setFormData] = useState({
     fname: '',
     lname: '',
@@ -84,12 +84,12 @@ export default function AddStudentModal({ student, onClose, onSuccess }: AddStud
         fee_plan_id: '',
         discount_type: ''
       });
-      
+
       // Fetch existing parents/guardians for this student
       fetchExistingGuardians(student._id);
     }
   }, [student]);
-  
+
   // Fetch existing guardians when editing
   const fetchExistingGuardians = async (studentId: string) => {
     try {
@@ -119,7 +119,7 @@ export default function AddStudentModal({ student, onClose, onSuccess }: AddStud
     }
 
     const courseFee = selectedPlan.total_amount || 0;
-    
+
     // Calculate discount based on selected discount type
     let discount = 0;
     const selectedDiscount = discountTypes.find(dt => dt.code === formData.discount_type);
@@ -162,23 +162,17 @@ export default function AddStudentModal({ student, onClose, onSuccess }: AddStud
   // Fetch fee plans when batch changes
   useEffect(() => {
     if (formData.batch_id) {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      console.log('🔍 Fetching fee plans for batch:', formData.batch_id);
-      
-      fetch(`${apiUrl}/api/fee-plans?batch_id=${formData.batch_id}`)
-        .then(res => res.json())
+      getFeePlans({ batch_id: formData.batch_id })
         .then(data => {
-          console.log('📦 Fee plans response:', data);
           if (data.plans && data.plans.length > 0) {
-            setFeePlans(data.plans);
-            console.log(`✅ Found ${data.plans.length} fee plans`);
+            setFeePlans(data.plans as any);
             // Auto-select first fee plan
             if (data.plans[0]._id) {
-              setFormData(prev => ({ ...prev, fee_plan_id: data.plans[0]._id }));
+              setFormData(prev => ({ ...prev, fee_plan_id: data.plans[0]._id as string }));
               // Set discount types for the first plan
               if (data.plans[0].discount_types && data.plans[0].discount_types.length > 0) {
                 setDiscountTypes(data.plans[0].discount_types);
-                setFormData(prev => ({ ...prev, discount_type: data.plans[0].discount_types[0].code }));
+                setFormData(prev => ({ ...prev, discount_type: data.plans[0].discount_types[0] ? data.plans[0].discount_types[0].code : '' }));
               }
             }
           } else {
@@ -250,51 +244,51 @@ export default function AddStudentModal({ student, onClose, onSuccess }: AddStud
     setGuardians(guardians.filter((_, i) => i !== index));
   };
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
 
-  try {
-    const payload = {
-      fname: formData.fname,
-      lname: formData.lname,
-      email: formData.email,
-      phone: formData.phone,
-      dob: formData.dob,
-      gender: formData.gender,
-      aadhar: formData.aadhar,
-      address: { street: formData.address },
-      course_id: formData.course_id,
-      batch_id: formData.batch_id,
-      fee_plan_id: formData.fee_plan_id,
-      discount_type: formData.discount_type,
-      guardians: guardians.filter(g => g.name && g.phone && g.relationship)
-    };
+    try {
+      const payload = {
+        fname: formData.fname,
+        lname: formData.lname,
+        email: formData.email,
+        phone: formData.phone,
+        dob: formData.dob,
+        gender: formData.gender,
+        aadhar: formData.aadhar,
+        address: { street: formData.address },
+        course_id: formData.course_id,
+        batch_id: formData.batch_id,
+        fee_plan_id: formData.fee_plan_id,
+        discount_type: formData.discount_type,
+        guardians: guardians.filter(g => g.name && g.phone && g.relationship)
+      };
 
-    if (student) {
-      await updateStudent(student._id, payload);
-    } else {
-      const res = await createStudent(payload);
-      if (res?.success) {
-        const cred = res?.credentials;
-        const msg = cred?.tempPassword
-          ? `Student created. Temporary credentials generated. User login will be sent by email.\n\nEmail/Phone: ${cred.email || cred.phone}\nTemp Password: ${cred.tempPassword}`
-          : 'Student profile created. User login will be sent by email.';
-        alert(msg);
+      if (student) {
+        await updateStudent(student._id, payload);
+      } else {
+        const res = await createStudent(payload);
+        if (res?.success) {
+          const cred = res?.credentials;
+          const msg = cred?.tempPassword
+            ? `Student created. Temporary credentials generated. User login will be sent by email.\n\nEmail/Phone: ${cred.email || cred.phone}\nTemp Password: ${cred.tempPassword}`
+            : 'Student profile created. User login will be sent by email.';
+          alert(msg);
+        }
       }
+      onSuccess();
+    } catch (err) {
+      const anyErr = err as { response?: { data?: { message?: string } } };
+      alert(anyErr?.response?.data?.message || 'Operation failed');
+    } finally {
+      setLoading(false);
     }
-    onSuccess();
-  } catch (err) {
-    const anyErr = err as { response?: { data?: { message?: string } } };
-    alert(anyErr?.response?.data?.message || 'Operation failed');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
 
   return (
-  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
 
       <div className="bg-white text-black rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         {/* Modal Header */}
@@ -459,11 +453,11 @@ const handleSubmit = async (e: React.FormEvent) => {
                   className="w-full px-3 py-2 text-sm text-black-800 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                 >
 
-                
-                    
+
+
                   <option value="">Select Batch</option>
                   {(filteredBatches.length ? filteredBatches : batches).map(batch => (
-                   <option key={batch._id} value={batch._id}>
+                    <option key={batch._id} value={batch._id}>
                       {batch.name}
                     </option>
                   ))}
@@ -489,7 +483,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                     <>
                       <option value="">-- Select Fee Plan --</option>
                       {feePlans.map(fp => {
-                        const discountInfo = fp.discount_types && fp.discount_types.length > 0 
+                        const discountInfo = fp.discount_types && fp.discount_types.length > 0
                           ? fp.discount_types.map(dt => `${dt.name} (${dt.discount_percent}% off)`).join(', ')
                           : 'No discount';
                         return (
