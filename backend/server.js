@@ -1145,7 +1145,7 @@ app.post("/api/courses", async (req, res) => {
   try {
     // Get branchId from header or user's primaryBranch
     const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
-    
+
     let { course_start, course_end, ...rest } = req.body;
     course_start = new Date(course_start);
     course_end = new Date(course_end);
@@ -5836,6 +5836,32 @@ app.get("/api/enquiries", verifyAuth, async (req, res) => {
     if (interest) filter.interest = interest;
     if (assignedTo) filter.assignedTo = assignedTo;
 
+    // Date range filtering
+    const { from, to } = req.query;
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = new Date(from);
+      if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+    }
+
+    // Branch filter
+    const branchId = req.headers["x-branch-id"];
+    if (branchId) {
+      const branchFilter = {
+        $or: [
+          { branchId: branchId },
+          { branchId: { $exists: false } },
+          { branchId: null }
+        ]
+      };
+
+      if (filter.$or) {
+        filter = { $and: [filter, branchFilter] };
+      } else {
+        filter = { ...filter, ...branchFilter };
+      }
+    }
+
     const skip = (page - 1) * limit;
 
     const enquiries = await Enquiry.find(filter)
@@ -5859,6 +5885,48 @@ app.get("/api/enquiries", verifyAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("Get enquiries error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get metadata for enquiry filters (Unique sources, interests, and users for assignment)
+app.get("/api/enquiries/meta", verifyAuth, async (req, res) => {
+  try {
+    const branchId = req.headers["x-branch-id"];
+    const filter = branchId ? {
+      $or: [
+        { branchId: branchId },
+        { branchId: null },
+        { branchId: { $exists: false } }
+      ]
+    } : {};
+
+    const [sources, interests, users] = await Promise.all([
+      Enquiry.distinct("source", filter),
+      Enquiry.distinct("interest", filter),
+      User.find({
+        status: true,
+        role: { $in: ["Admin", "SuperAdmin", "Teacher"] }
+      }).select("name fname lname email role")
+    ]);
+
+    // Format users for selection
+    const formattedUsers = users.map(u => ({
+      _id: u._id,
+      name: u.name || `${u.fname} ${u.lname}`,
+      role: u.role
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        sources: sources.filter(Boolean).sort(),
+        interests: interests.filter(Boolean).sort(),
+        users: formattedUsers
+      }
+    });
+  } catch (err) {
+    console.error("Enquiry meta error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -5932,6 +6000,16 @@ app.get("/api/enquiries/counts", verifyAuth, async (req, res) => {
   try {
     console.log("📊 Fetching enquiry counts...");
 
+    const branchId = req.headers["x-branch-id"];
+    let filter = {};
+    if (branchId) {
+      filter.$or = [
+        { branchId: branchId },
+        { branchId: { $exists: false } },
+        { branchId: null }
+      ];
+    }
+
     const [
       rawCount,
       coldLeadCount,
@@ -5943,15 +6021,15 @@ app.get("/api/enquiries/counts", verifyAuth, async (req, res) => {
       enrolledCount,
       lostCount,
     ] = await Promise.all([
-      Enquiry.countDocuments({ status: "raw" }),
-      Enquiry.countDocuments({ status: "cold_lead" }),
-      Enquiry.countDocuments({ status: "warm_lead" }),
-      Enquiry.countDocuments({ status: "hot_lead" }),
-      Enquiry.countDocuments({ status: "contacted" }),
-      Enquiry.countDocuments({ status: "interested" }),
-      Enquiry.countDocuments({ status: "not_interested" }),
-      Enquiry.countDocuments({ status: "enrolled" }),
-      Enquiry.countDocuments({ status: "lost" }),
+      Enquiry.countDocuments({ ...filter, status: "raw" }),
+      Enquiry.countDocuments({ ...filter, status: "cold_lead" }),
+      Enquiry.countDocuments({ ...filter, status: "warm_lead" }),
+      Enquiry.countDocuments({ ...filter, status: "hot_lead" }),
+      Enquiry.countDocuments({ ...filter, status: "contacted" }),
+      Enquiry.countDocuments({ ...filter, status: "interested" }),
+      Enquiry.countDocuments({ ...filter, status: "not_interested" }),
+      Enquiry.countDocuments({ ...filter, status: "enrolled" }),
+      Enquiry.countDocuments({ ...filter, status: "lost" }),
     ]);
 
     const countsData = {
@@ -5982,7 +6060,7 @@ app.get("/api/enquiries/counts", verifyAuth, async (req, res) => {
 app.get("/api/enquiries/:status", verifyAuth, async (req, res) => {
   try {
     const { status } = req.params;
-    const { page = 1, limit = 50, search, source, interest } = req.query;
+    const { page = 1, limit = 50, search, source, interest, assignedTo, from, to } = req.query;
 
     console.log(`📊 Fetching enquiries with status: ${status}`);
 
@@ -5998,6 +6076,32 @@ app.get("/api/enquiries/:status", verifyAuth, async (req, res) => {
 
     if (source) filter.source = source;
     if (interest) filter.interest = interest;
+    if (assignedTo) filter.assignedTo = assignedTo;
+
+    // Date range filtering
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = new Date(from);
+      if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+    }
+
+    // Branch filter
+    const branchId = req.headers["x-branch-id"];
+    if (branchId) {
+      const branchFilter = {
+        $or: [
+          { branchId: branchId },
+          { branchId: { $exists: false } },
+          { branchId: null }
+        ]
+      };
+
+      if (filter.$or) {
+        filter = { $and: [filter, branchFilter] };
+      } else {
+        filter = { ...filter, ...branchFilter };
+      }
+    }
 
     const skip = (page - 1) * limit;
 
@@ -6107,6 +6211,7 @@ app.post("/api/enquiries", verifyAuth, async (req, res) => {
       address: address ? address.trim() : undefined,
       location: location ? location.trim() : undefined,
       notes: notes ? notes.trim() : undefined,
+      branchId: req.headers["x-branch-id"],
       createdBy: req.user.id,
     });
 
@@ -6563,6 +6668,7 @@ app.post(
             address: item.address,
             location: item.location,
             status: "raw",
+            branchId: req.headers["x-branch-id"],
             createdBy: req.user.id,
           });
 

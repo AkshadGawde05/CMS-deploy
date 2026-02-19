@@ -21,26 +21,31 @@ import { getRawEnquiries, deleteEnquiry, updateEnquiryStatus, type EnquiryDTO } 
 
 type TabType = "rawdata" | "leads" | "contacted" | "action" | "outcome";
 
-interface RawEnquiry extends EnquiryDTO {
-  status: "raw";
+interface RawDataManagementTabProps {
+  sources: string[];
+  interests: string[];
+  users: { _id: string; name: string; role: string }[];
+  onAction?: () => void;
 }
 
-
-export default function RawDataManagementTab() {
+export default function RawDataManagementTab({ sources, interests, users, onAction }: RawDataManagementTabProps) {
   const { hasPermission } = useAuth();
   const { showToast } = useToast();
-  const [enquiries, setEnquiries] = useState<RawEnquiry[]>([]);
+  const [enquiries, setEnquiries] = useState<EnquiryDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [interestFilter, setInterestFilter] = useState("all");
+  const [assignedFilter, setAssignedFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
-  const [selectedEnquiry, setSelectedEnquiry] = useState<RawEnquiry | null>(null);
+  const [selectedEnquiry, setSelectedEnquiry] = useState<EnquiryDTO | null>(null);
   const [selectedEnquiries, setSelectedEnquiries] = useState<string[]>([]);
 
   // Pagination state
@@ -49,8 +54,6 @@ export default function RawDataManagementTab() {
   const [totalRecords, setTotalRecords] = useState(0);
   const LIMIT = 50;
 
-  const sources = ["Website", "Facebook", "Google Ads", "Referral", "Walk-in", "Phone Call"];
-  const interests = ["Full Stack", "Data Science", "Digital Marketing", "UI/UX", "Python", "Java"];
 
   const fetchEnquiries = useCallback(async () => {
     try {
@@ -60,12 +63,15 @@ export default function RawDataManagementTab() {
       if (search) params.search = search;
       if (sourceFilter !== 'all') params.source = sourceFilter;
       if (interestFilter !== 'all') params.interest = interestFilter;
+      if (assignedFilter !== 'all') params.assignedTo = assignedFilter;
+      if (fromDate) params.from = fromDate;
+      if (toDate) params.to = toDate;
 
       const response = await getRawEnquiries(params);
       console.log("📊 Enquiries response:", response);
 
       if (response && response.success) {
-        setEnquiries((response.data || []) as RawEnquiry[]);
+        setEnquiries(response.data || []);
         if (response.pagination) {
           setTotalPages(response.pagination.total || 1);
           setTotalRecords(response.pagination.totalRecords || 0);
@@ -84,7 +90,7 @@ export default function RawDataManagementTab() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, sourceFilter, interestFilter, showToast]);
+  }, [page, search, sourceFilter, interestFilter, assignedFilter, fromDate, toDate, showToast]);
 
   useEffect(() => {
     fetchEnquiries();
@@ -93,7 +99,7 @@ export default function RawDataManagementTab() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [search, sourceFilter, interestFilter]);
+  }, [search, sourceFilter, interestFilter, assignedFilter, fromDate, toDate]);
 
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this enquiry?")) {
@@ -105,6 +111,7 @@ export default function RawDataManagementTab() {
           message: 'Enquiry has been deleted successfully'
         });
         fetchEnquiries();
+        onAction?.();
       } catch (error) {
         console.error("Failed to delete enquiry", error);
         showToast({
@@ -241,11 +248,12 @@ export default function RawDataManagementTab() {
         </div>
 
         {/* Interest Filter */}
-        <div>
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
           <select
             value={interestFilter}
             onChange={(e) => setInterestFilter(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700"
           >
             <option value="all">All Interests</option>
             {interests.map(interest => (
@@ -253,6 +261,58 @@ export default function RawDataManagementTab() {
             ))}
           </select>
         </div>
+
+        {/* Assigned To Filter */}
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+          <select
+            value={assignedFilter}
+            onChange={(e) => setAssignedFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700"
+          >
+            <option value="all">All Assigned</option>
+            {users.map(user => (
+              <option key={user._id} value={user._id}>{user.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date Range - From */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">From:</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-700"
+          />
+        </div>
+
+        {/* Date Range - To */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">To:</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-700"
+          />
+        </div>
+
+        {/* Clear Filters */}
+        <button
+          onClick={() => {
+            setSearch("");
+            setSourceFilter("all");
+            setInterestFilter("all");
+            setAssignedFilter("all");
+            setFromDate("");
+            setToDate("");
+          }}
+          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+        >
+          Clear All Filters
+        </button>
 
         {/* Bulk Actions */}
         {selectedEnquiries.length > 0 && (
@@ -592,6 +652,7 @@ export default function RawDataManagementTab() {
             setShowBulkUploadModal(false);
             console.log("🔄 Calling fetchEnquiries after bulk upload...");
             fetchEnquiries();
+            onAction?.();
             if (!failedEntries || failedEntries.length === 0) {
               showToast({
                 type: 'success',

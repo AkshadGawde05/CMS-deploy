@@ -9,7 +9,7 @@ import LeadsTab from "@/components/enquiry/LeadsTab";
 import ContactedTab from "@/components/enquiry/ContactedTab";
 import ActionTab from "@/components/enquiry/ActionTab";
 import OutcomeTab from "@/components/enquiry/OutcomeTab";
-import { getEnquiryCounts } from "@/lib/api";
+import { getEnquiryCounts, getEnquiryMeta } from "@/lib/api";
 
 type TabType = "rawdata" | "leads" | "contacted" | "action" | "outcome";
 
@@ -56,15 +56,34 @@ export default function EnquiryManagementPage() {
   const [loadingCounts, setLoadingCounts] = useState(true);
   const [countsError, setCountsError] = useState(false);
 
+  // Meta data for filters
+  const [sources, setSources] = useState<string[]>([]);
+  const [interests, setInterests] = useState<string[]>([]);
+  const [users, setUsers] = useState<{ _id: string; name: string; role: string }[]>([]);
+
   // Fetch counts on component mount and set up refresh interval
   useEffect(() => {
     fetchCounts();
+    fetchMeta();
 
     // Refresh counts every 30 seconds to keep them updated
     const interval = setInterval(fetchCounts, 30000);
 
     return () => clearInterval(interval);
   }, []);
+
+  const fetchMeta = async () => {
+    try {
+      const response = await getEnquiryMeta();
+      if (response && response.success) {
+        setSources(response.data.sources || []);
+        setInterests(response.data.interests || []);
+        setUsers(response.data.users || []);
+      }
+    } catch (error) {
+      console.error("❌ Failed to fetch enquiry meta:", error);
+    }
+  };
 
   const fetchCounts = async () => {
     try {
@@ -188,8 +207,8 @@ export default function EnquiryManagementPage() {
                   onClick={fetchCounts}
                   disabled={loadingCounts}
                   className={`px-3 py-1.5 text-xs font-medium rounded-lg transition disabled:opacity-50 whitespace-nowrap ${countsError
-                      ? "text-red-600 bg-red-50 border border-red-200 hover:bg-red-100"
-                      : "text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100"
+                    ? "text-red-600 bg-red-50 border border-red-200 hover:bg-red-100"
+                    : "text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100"
                     }`}
                 >
                   {loadingCounts ? "Refreshing..." : countsError ? "Retry" : "Refresh"}
@@ -206,8 +225,8 @@ export default function EnquiryManagementPage() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex-1 sm:flex-none whitespace-nowrap px-3 py-2 rounded-lg font-medium text-xs transition-colors ${activeTab === tab.id
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-50 text-gray-700 hover:bg-gray-100"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-50 text-gray-700 hover:bg-gray-100"
                     }`}
                 >
                   <span className="hidden sm:inline">{tab.label}</span>
@@ -218,8 +237,8 @@ export default function EnquiryManagementPage() {
                   </span>
                   <span
                     className={`ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full inline-flex items-center justify-center min-w-[20px] ${activeTab === tab.id
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200 text-gray-700"
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-200 text-gray-700"
                       }`}
                   >
                     {loadingCounts ? "..." : (isNaN(tab.count) ? "0" : tab.count)}
@@ -231,11 +250,46 @@ export default function EnquiryManagementPage() {
 
           {/* Tab Content */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            {activeTab === "rawdata" && <RawDataManagementTab />}
-            {activeTab === "leads" && <LeadsTab />}
-            {activeTab === "contacted" && <ContactedTab />}
-            {activeTab === "action" && <ActionTab />}
-            {activeTab === "outcome" && <OutcomeTab />}
+            {activeTab === "rawdata" && (
+              <RawDataManagementTab
+                sources={sources}
+                interests={interests}
+                users={users}
+                onAction={fetchCounts}
+              />
+            )}
+            {activeTab === "leads" && (
+              <LeadsTab
+                sources={sources}
+                interests={interests}
+                users={users}
+                onAction={fetchCounts}
+              />
+            )}
+            {activeTab === "contacted" && (
+              <ContactedTab
+                sources={sources}
+                interests={interests}
+                users={users}
+                onAction={fetchCounts}
+              />
+            )}
+            {activeTab === "action" && (
+              <ActionTab
+                sources={sources}
+                interests={interests}
+                users={users}
+                onAction={fetchCounts}
+              />
+            )}
+            {activeTab === "outcome" && (
+              <OutcomeTab
+                sources={sources}
+                interests={interests}
+                users={users}
+                onAction={fetchCounts}
+              />
+            )}
           </div>
         </main>
       </div>

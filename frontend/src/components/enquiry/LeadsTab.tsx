@@ -25,7 +25,14 @@ import ViewEnquiryModal from "./ViewEnquiryModal";
 type TabType = "rawdata" | "leads" | "contacted" | "action" | "outcome";
 
 
-export default function LeadsTab() {
+interface LeadsTabProps {
+  sources: string[];
+  interests: string[];
+  users: { _id: string; name: string; role: string }[];
+  onAction?: () => void;
+}
+
+export default function LeadsTab({ sources, interests, users, onAction }: LeadsTabProps) {
   const { hasPermission } = useAuth();
   const { showToast } = useToast();
   const [leads, setLeads] = useState<EnquiryDTO[]>([]);
@@ -33,6 +40,10 @@ export default function LeadsTab() {
   const [search, setSearch] = useState("");
   const [leadType, setLeadType] = useState<'cold_lead' | 'warm_lead' | 'hot_lead'>('cold_lead');
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [interestFilter, setInterestFilter] = useState("all");
+  const [assignedFilter, setAssignedFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [editingEnquiry, setEditingEnquiry] = useState<EnquiryDTO | null>(null);
   const [viewingEnquiry, setViewingEnquiry] = useState<EnquiryDTO | null>(null);
 
@@ -43,7 +54,6 @@ export default function LeadsTab() {
   const [totalRecords, setTotalRecords] = useState(0);
   const LIMIT = 50;
 
-  const sources = ["Website", "Facebook", "Google Ads", "Referral", "Walk-in", "Phone Call"];
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -51,6 +61,10 @@ export default function LeadsTab() {
       const params: Record<string, string | number> = { page, limit: LIMIT };
       if (search) params.search = search;
       if (sourceFilter !== 'all') params.source = sourceFilter;
+      if (interestFilter !== 'all') params.interest = interestFilter;
+      if (assignedFilter !== 'all') params.assignedTo = assignedFilter;
+      if (fromDate) params.from = fromDate;
+      if (toDate) params.to = toDate;
 
       let response;
       switch (leadType) {
@@ -84,17 +98,16 @@ export default function LeadsTab() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, sourceFilter, leadType, showToast]);
+  }, [page, search, sourceFilter, interestFilter, assignedFilter, fromDate, toDate, leadType, showToast]);
 
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
 
-  // Reset page when filters or tab change
   useEffect(() => {
     setPage(1);
     setSelectedEnquiries([]);
-  }, [search, sourceFilter, leadType]);
+  }, [search, sourceFilter, interestFilter, assignedFilter, fromDate, toDate, leadType]);
 
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this lead?")) {
@@ -106,6 +119,7 @@ export default function LeadsTab() {
           message: 'Lead deleted successfully'
         });
         fetchLeads();
+        onAction?.();
       } catch {
         showToast({
           type: 'error',
@@ -193,6 +207,7 @@ export default function LeadsTab() {
           message: `Moved back to ${newStatus.replace('_', ' ')}`
         });
         fetchLeads();
+        onAction?.();
       }
     } catch {
       showToast({
@@ -333,6 +348,7 @@ export default function LeadsTab() {
         </div>
 
         {/* Source Filter */}
+        {/* Source Filter */}
         <div className="relative">
           <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 pointer-events-none" />
           <select
@@ -346,6 +362,73 @@ export default function LeadsTab() {
             ))}
           </select>
         </div>
+
+        {/* Interest Filter */}
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 pointer-events-none" />
+          <select
+            value={interestFilter}
+            onChange={(e) => setInterestFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700 bg-white"
+          >
+            <option value="all">All Interests</option>
+            {interests.map(interest => (
+              <option key={interest} value={interest}>{interest}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Assigned To Filter */}
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 pointer-events-none" />
+          <select
+            value={assignedFilter}
+            onChange={(e) => setAssignedFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700 bg-white"
+          >
+            <option value="all">All Assigned</option>
+            {users.map(user => (
+              <option key={user._id} value={user._id}>{user.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date Range - From */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">From:</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-700"
+          />
+        </div>
+
+        {/* Date Range - To */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">To:</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-700"
+          />
+        </div>
+
+        {/* Clear Filters */}
+        <button
+          onClick={() => {
+            setSearch("");
+            setSourceFilter("all");
+            setInterestFilter("all");
+            setAssignedFilter("all");
+            setFromDate("");
+            setToDate("");
+          }}
+          className="text-xs text-blue-600 hover:text-blue-800 font-medium lg:col-span-1"
+        >
+          Clear All Filters
+        </button>
       </div>
 
       {/* Desktop Leads Table */}
@@ -650,6 +733,7 @@ export default function LeadsTab() {
           onSuccess={() => {
             setEditingEnquiry(null);
             fetchLeads();
+            onAction?.();
           }}
         />
       )}

@@ -1049,6 +1049,8 @@ export const getEnquiries = async (params?: {
   source?: string;
   interest?: string;
   assignedTo?: string;
+  from?: string;
+  to?: string;
   page?: number;
   limit?: number;
 }): Promise<{
@@ -1074,6 +1076,9 @@ export const getEnquiriesByStatus = async (
     search?: string;
     source?: string;
     interest?: string;
+    assignedTo?: string;
+    from?: string;
+    to?: string;
   }
 ): Promise<{
   success: boolean;
@@ -1088,6 +1093,19 @@ export const getEnquiriesByStatus = async (
   console.log(`🔧 Making API call to /api/enquiries/${status}`, params);
   const response = await api.get(`/api/enquiries/${status}`, { params });
   console.log(`🔧 API response for ${status}:`, response.data);
+  return response.data;
+};
+
+// Get metadata for enquiry filters
+export const getEnquiryMeta = async (): Promise<{
+  success: boolean;
+  data: {
+    sources: string[];
+    interests: string[];
+    users: { _id: string; name: string; role: string }[];
+  };
+}> => {
+  const response = await api.get("/api/enquiries/meta");
   return response.data;
 };
 

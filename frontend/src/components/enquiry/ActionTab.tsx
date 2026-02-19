@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Search,
+  Filter,
   ChevronLeft,
   ChevronRight,
   Phone,
@@ -19,13 +20,25 @@ import { getEnquiriesByStatus, updateEnquiryStatus, type EnquiryDTO, deleteEnqui
 import EditEnquiryModal from "./EditEnquiryModal";
 import ViewEnquiryModal from "./ViewEnquiryModal";
 
-export default function ActionTab() {
+interface ActionTabProps {
+  sources: string[];
+  interests: string[];
+  users: { _id: string; name: string; role: string }[];
+  onAction?: () => void;
+}
+
+export default function ActionTab({ sources, interests, users, onAction }: ActionTabProps) {
   const { hasPermission } = useAuth();
   const { showToast } = useToast();
   const [enquiries, setEnquiries] = useState<EnquiryDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [actionType, setActionType] = useState<'interested' | 'not_interested'>('interested');
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [interestFilter, setInterestFilter] = useState("all");
+  const [assignedFilter, setAssignedFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedEnquiry, setSelectedEnquiry] = useState<EnquiryDTO | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -42,6 +55,11 @@ export default function ActionTab() {
       setLoading(true);
       const params: Record<string, string | number> = { page, limit: LIMIT };
       if (search) params.search = search;
+      if (sourceFilter !== "all") params.source = sourceFilter;
+      if (interestFilter !== "all") params.interest = interestFilter;
+      if (assignedFilter !== "all") params.assignedTo = assignedFilter;
+      if (fromDate) params.from = fromDate;
+      if (toDate) params.to = toDate;
 
       const response = await getEnquiriesByStatus(actionType, params);
 
@@ -63,7 +81,7 @@ export default function ActionTab() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, actionType, showToast]);
+  }, [page, search, actionType, sourceFilter, interestFilter, assignedFilter, fromDate, toDate, showToast]);
 
   useEffect(() => {
     fetchEnquiries();
@@ -72,7 +90,7 @@ export default function ActionTab() {
   useEffect(() => {
     setPage(1);
     setSelectedEnquiries([]);
-  }, [search, actionType]);
+  }, [search, actionType, sourceFilter, interestFilter, assignedFilter, fromDate, toDate]);
 
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this enquiry?")) {
@@ -84,6 +102,7 @@ export default function ActionTab() {
           message: 'Enquiry deleted successfully'
         });
         fetchEnquiries();
+        onAction?.();
       } catch {
         showToast({
           type: 'error',
@@ -253,16 +272,101 @@ export default function ActionTab() {
         </nav>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-4 sm:mb-6">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-        <input
-          type="text"
-          placeholder={`Search ${actionType.replace('_', ' ')} enquiries...`}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
-        />
+      {/* Filters Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+          <input
+            type="text"
+            placeholder={`Search ${actionType.replace('_', ' ')} enquiries...`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+          />
+        </div>
+
+        {/* Source Filter */}
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 pointer-events-none" />
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700 bg-white"
+          >
+            <option value="all">All Sources</option>
+            {sources.map(source => (
+              <option key={source} value={source}>{source}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Interest Filter */}
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 pointer-events-none" />
+          <select
+            value={interestFilter}
+            onChange={(e) => setInterestFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700 bg-white"
+          >
+            <option value="all">All Interests</option>
+            {interests.map(interest => (
+              <option key={interest} value={interest}>{interest}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Assigned To Filter */}
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 pointer-events-none" />
+          <select
+            value={assignedFilter}
+            onChange={(e) => setAssignedFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700 bg-white"
+          >
+            <option value="all">All Assigned</option>
+            {users.map(user => (
+              <option key={user._id} value={user._id}>{user.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date Range - From */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">From:</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-700"
+          />
+        </div>
+
+        {/* Date Range - To */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">To:</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-700"
+          />
+        </div>
+
+        {/* Clear Filters */}
+        <button
+          onClick={() => {
+            setSearch("");
+            setSourceFilter("all");
+            setInterestFilter("all");
+            setAssignedFilter("all");
+            setFromDate("");
+            setToDate("");
+          }}
+          className="text-xs text-blue-600 hover:text-blue-800 font-medium lg:col-span-1"
+        >
+          Clear All Filters
+        </button>
       </div>
 
       {/* Desktop Table View */}
@@ -468,7 +572,7 @@ export default function ActionTab() {
         <EditEnquiryModal
           enquiry={selectedEnquiry}
           onClose={() => { setShowEditModal(false); setSelectedEnquiry(null); }}
-          onSuccess={() => { setShowEditModal(false); setSelectedEnquiry(null); fetchEnquiries(); }}
+          onSuccess={() => { setShowEditModal(false); setSelectedEnquiry(null); fetchEnquiries(); onAction?.(); }}
         />
       )}
 
