@@ -19,11 +19,18 @@ import EditEnquiryModal from "./EditEnquiryModal";
 import ViewEnquiryModal from "./ViewEnquiryModal";
 import { getRawEnquiries, deleteEnquiry, updateEnquiryStatus, type EnquiryDTO } from "@/lib/api";
 
+type TabType = "rawdata" | "leads" | "contacted" | "action" | "outcome";
+
 interface RawEnquiry extends EnquiryDTO {
   status: "raw";
 }
 
-export default function RawDataManagementTab() {
+interface RawDataManagementTabProps {
+  onNavigate?: (tab: TabType) => void;
+  count?: number;
+}
+
+export default function RawDataManagementTab({ onNavigate, count = 0 }: RawDataManagementTabProps) {
   const { hasPermission } = useAuth();
   const { showToast } = useToast();
   const [enquiries, setEnquiries] = useState<RawEnquiry[]>([]);

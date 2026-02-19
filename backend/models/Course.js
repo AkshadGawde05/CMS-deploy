@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 
 const courseSchema = new mongoose.Schema({
+  branchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    required: false, // Will be set to true after migration
+    index: true,
+  },
   name: {
     type: String,
     required: true,

@@ -8,12 +8,26 @@ import {
   Phone,
   Mail,
   MessageCircle,
-  Star
+  Star,
+  ArrowLeft,
+  Edit,
+  Eye,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { getColdLeads, getWarmLeads, getHotLeads, updateEnquiryStatus, addContactAttempt, type EnquiryDTO } from "@/lib/api";
+import EditEnquiryModal from "./EditEnquiryModal";
+import ViewEnquiryModal from "./ViewEnquiryModal";
 
-export default function LeadsTab() {
+type TabType = "rawdata" | "leads" | "contacted" | "action" | "outcome";
+
+interface LeadsTabProps {
+  onNavigate?: (tab: TabType) => void;
+  counts?: { cold: number; warm: number; hot: number };
+}
+
+export default function LeadsTab({ onNavigate, counts = { cold: 0, warm: 0, hot: 0 } }: LeadsTabProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { hasPermission } = useAuth();
   const [leads, setLeads] = useState<EnquiryDTO[]>([]);
@@ -21,6 +35,8 @@ export default function LeadsTab() {
   const [search, setSearch] = useState("");
   const [leadType, setLeadType] = useState<'cold_lead' | 'warm_lead' | 'hot_lead'>('cold_lead');
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [editingEnquiry, setEditingEnquiry] = useState<EnquiryDTO | null>(null);
+  const [viewingEnquiry, setViewingEnquiry] = useState<EnquiryDTO | null>(null);
   
   const sources = ["Website", "Facebook", "Google Ads", "Referral", "Walk-in", "Phone Call"];
 
@@ -78,6 +94,35 @@ export default function LeadsTab() {
     }
   };
 
+  const handleMoveForward = async (id: string) => {
+    try {
+      let newStatus = leadType;
+      if (leadType === 'cold_lead') newStatus = 'warm_lead';
+      else if (leadType === 'warm_lead') newStatus = 'hot_lead';
+      else if (leadType === 'hot_lead') newStatus = 'contacted';
+      
+      await updateEnquiryStatus(id, newStatus, `Moved forward from ${leadType.replace('_', ' ')}`);
+      fetchLeads();
+    } catch {
+      alert("Failed to move forward");
+    }
+  };
+
+  const handleMoveBack = async (id: string) => {
+    try {
+      let newStatus = leadType;
+      if (leadType === 'warm_lead') newStatus = 'cold_lead';
+      else if (leadType === 'hot_lead') newStatus = 'warm_lead';
+      
+      if (newStatus !== leadType) {
+        await updateEnquiryStatus(id, newStatus, `Moved back from ${leadType.replace('_', ' ')}`);
+        fetchLeads();
+      }
+    } catch {
+      alert("Failed to move back");
+    }
+  };
+
   const getLeadTypeColor = (type: string) => {
     switch (type) {
       case 'cold_lead': return 'bg-blue-100 text-blue-800';
@@ -95,11 +140,20 @@ export default function LeadsTab() {
 
   return (
     <div className="p-4 sm:p-6">
-      {/* Header */}
+      {/* Header with Back Button */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div>
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Leads Management</h2>
-          <p className="text-xs sm:text-sm text-gray-600">Manage and track qualified leads</p>
+        <button
+          onClick={() => onNavigate?.("rawdata")}
+          className="flex-shrink-0 p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition border-2 border-blue-300 shadow-sm"
+          title="Back to Raw Data"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="flex items-center gap-2 w-full">
+          <div>
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Leads Management</h2>
+            <p className="text-xs sm:text-sm text-gray-600">Manage and track qualified leads</p>
+          </div>
         </div>
       </div>
 
@@ -107,9 +161,9 @@ export default function LeadsTab() {
       <div className="border-b border-gray-200 mb-4 sm:mb-6 overflow-x-auto">
         <nav className="-mb-px flex space-x-4 sm:space-x-8 min-w-max">
           {[
-            { id: 'cold_lead', label: 'Cold Leads', color: 'text-blue-600 border-blue-500' },
-            { id: 'warm_lead', label: 'Warm Leads', color: 'text-yellow-600 border-yellow-500' },
-            { id: 'hot_lead', label: 'Hot Leads', color: 'text-red-600 border-red-500' }
+            { id: 'cold_lead', label: 'Cold Leads', color: 'text-blue-600 border-blue-500', count: counts.cold },
+            { id: 'warm_lead', label: 'Warm Leads', color: 'text-yellow-600 border-yellow-500', count: counts.warm },
+            { id: 'hot_lead', label: 'Hot Leads', color: 'text-red-600 border-red-500', count: counts.hot }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -128,7 +182,7 @@ export default function LeadsTab() {
                     : "bg-gray-100 text-gray-600"
                 }`}
               >
-                {leads.length}
+                {tab.count}
               </span>
             </button>
           ))}
@@ -245,7 +299,39 @@ export default function LeadsTab() {
                     }
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1">
+                      {/* Core Action Buttons */}
+                      <button
+                        onClick={() => setEditingEnquiry(lead)}
+                        className="p-1.5 text-purple-600 hover:bg-purple-50 rounded transition"
+                        title="Edit Enquiry"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+
+                     {(leadType === 'warm_lead' || leadType === 'hot_lead') && (
+                        <button
+                          onClick={() => handleMoveBack(lead._id)}
+                          className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition"
+                          title="Move Back"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                      )}
+
+                      {leadType !== 'hot_lead' && (
+                        <button
+                          onClick={() => handleMoveForward(lead._id)}
+                          className="p-1.5 text-green-600 hover:bg-green-50 rounded transition"
+                          title="Move Forward"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      )}
+
+                     
+
+                      {/* Extra Action Buttons */}
                       <button
                         onClick={() => handleContact(lead._id, 'phone', 'answered')}
                         className="p-1 text-gray-500 hover:text-green-600 transition"
@@ -272,7 +358,7 @@ export default function LeadsTab() {
                         <MessageCircle className="h-4 w-4" />
                       </button>
                       
-                      {leadType === 'cold_lead' && (
+                      {/* {leadType === 'cold_lead' && (
                         <button
                           onClick={() => handleStatusChange(lead._id, 'warm_lead')}
                           className="p-1 text-gray-500 hover:text-yellow-600 transition"
@@ -300,7 +386,7 @@ export default function LeadsTab() {
                         >
                           <ArrowRight className="h-4 w-4" />
                         </button>
-                      )}
+                      )} */}
                     </div>
                   </td>
                 </tr>
@@ -359,7 +445,37 @@ export default function LeadsTab() {
               </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-end gap-1 pt-3 border-t border-gray-100 flex-wrap">
+                {/* Core Action Buttons */}
+                <button
+                  onClick={() => setEditingEnquiry(lead)}
+                  className="p-2 text-purple-600 hover:bg-purple-50 rounded transition"
+                  title="Edit"
+                >
+                  <Edit className="h-4 w-4" />
+                </button>
+
+                {leadType !== 'hot_lead' && (
+                  <button
+                    onClick={() => handleMoveForward(lead._id)}
+                    className="p-2 text-green-600 hover:bg-green-50 rounded transition"
+                    title="Forward"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                )}
+
+                {(leadType === 'warm_lead' || leadType === 'hot_lead') && (
+                  <button
+                    onClick={() => handleMoveBack(lead._id)}
+                    className="p-2 text-orange-600 hover:bg-orange-50 rounded transition"
+                    title="Back"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                )}
+
+                {/* Extra Action Buttons */}
                 <button
                   onClick={() => handleContact(lead._id, 'phone', 'answered')}
                   className="p-2 text-green-600 hover:bg-green-50 rounded transition"
@@ -393,6 +509,27 @@ export default function LeadsTab() {
           ))
         )}
       </div>
+
+      {/* Modals */}
+      {editingEnquiry && (
+        <EditEnquiryModal
+          enquiry={editingEnquiry}
+          isOpen={!!editingEnquiry}
+          onClose={() => setEditingEnquiry(null)}
+          onSave={() => {
+            setEditingEnquiry(null);
+            fetchLeads();
+          }}
+        />
+      )}
+
+      {viewingEnquiry && (
+        <ViewEnquiryModal
+          enquiry={viewingEnquiry}
+          isOpen={!!viewingEnquiry}
+          onClose={() => setViewingEnquiry(null)}
+        />
+      )}
     </div>
   );
 }

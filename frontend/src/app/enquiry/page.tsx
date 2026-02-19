@@ -21,6 +21,18 @@ interface TabCounts {
   outcome: number;
 }
 
+interface DetailedCounts {
+  raw: number;
+  cold_lead: number;
+  warm_lead: number;
+  hot_lead: number;
+  contacted: number;
+  interested: number;
+  not_interested: number;
+  enrolled: number;
+  lost: number;
+}
+
 export default function EnquiryManagementPage() {
   const [activeTab, setActiveTab] = useState<TabType>("rawdata");
   const [counts, setCounts] = useState<TabCounts>({
@@ -29,6 +41,17 @@ export default function EnquiryManagementPage() {
     contacted: 0,
     action: 0,
     outcome: 0
+  });
+  const [detailedCounts, setDetailedCounts] = useState<DetailedCounts>({
+    raw: 0,
+    cold_lead: 0,
+    warm_lead: 0,
+    hot_lead: 0,
+    contacted: 0,
+    interested: 0,
+    not_interested: 0,
+    enrolled: 0,
+    lost: 0,
   });
   const [loadingCounts, setLoadingCounts] = useState(true);
   const [countsError, setCountsError] = useState(false);
@@ -57,32 +80,66 @@ export default function EnquiryManagementPage() {
           return isNaN(num) ? 0 : num;
         };
         
-        const newCounts = {
-          rawdata: safeNumber(response.data.raw),
-          leads: safeNumber(response.data.cold_lead) + safeNumber(response.data.warm_lead) + safeNumber(response.data.hot_lead),
+        const detailed: DetailedCounts = {
+          raw: safeNumber(response.data.raw),
+          cold_lead: safeNumber(response.data.cold_lead),
+          warm_lead: safeNumber(response.data.warm_lead),
+          hot_lead: safeNumber(response.data.hot_lead),
           contacted: safeNumber(response.data.contacted),
-          action: safeNumber(response.data.interested) + safeNumber(response.data.not_interested),
-          outcome: safeNumber(response.data.enrolled) + safeNumber(response.data.lost)
+          interested: safeNumber(response.data.interested),
+          not_interested: safeNumber(response.data.not_interested),
+          enrolled: safeNumber(response.data.enrolled),
+          lost: safeNumber(response.data.lost),
+        };
+        
+        const newCounts = {
+          rawdata: detailed.raw,
+          leads: detailed.cold_lead + detailed.warm_lead + detailed.hot_lead,
+          contacted: detailed.contacted,
+          action: detailed.interested + detailed.not_interested,
+          outcome: detailed.enrolled + detailed.lost
         };
         
         console.log("📊 Setting counts:", newCounts);
+        console.log("📊 Setting detailed counts:", detailed);
+        setDetailedCounts(detailed);
         setCounts(newCounts);
         setCountsError(false);
       } else {
         console.warn("⚠️  Invalid response or no data:", response);
-        // Set default counts (could add mock data here for testing)
+        setDetailedCounts({
+          raw: 0,
+          cold_lead: 0,
+          warm_lead: 0,
+          hot_lead: 0,
+          contacted: 0,
+          interested: 0,
+          not_interested: 0,
+          enrolled: 0,
+          lost: 0,
+        });
         setCounts({
-          rawdata: 0, // Could be: 5 for demo
-          leads: 0,   // Could be: 8 for demo  
-          contacted: 0, // Could be: 3 for demo
-          action: 0,    // Could be: 4 for demo
-          outcome: 0    // Could be: 2 for demo
+          rawdata: 0,
+          leads: 0,
+          contacted: 0,
+          action: 0,
+          outcome: 0
         });
         setCountsError(true);
       }
     } catch (error) {
       console.error("❌ Failed to fetch counts:", error);
-      // Set default counts on error
+      setDetailedCounts({
+        raw: 0,
+        cold_lead: 0,
+        warm_lead: 0,
+        hot_lead: 0,
+        contacted: 0,
+        interested: 0,
+        not_interested: 0,
+        enrolled: 0,
+        lost: 0,
+      });
       setCounts({
         rawdata: 0,
         leads: 0,
@@ -177,11 +234,11 @@ export default function EnquiryManagementPage() {
 
             {/* Tab Content */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              {activeTab === "rawdata" && <RawDataManagementTab />}
-              {activeTab === "leads" && <LeadsTab />}
-              {activeTab === "contacted" && <ContactedTab />}
-              {activeTab === "action" && <ActionTab />}
-              {activeTab === "outcome" && <OutcomeTab />}
+              {activeTab === "rawdata" && <RawDataManagementTab onNavigate={setActiveTab} count={detailedCounts.raw} />}
+              {activeTab === "leads" && <LeadsTab onNavigate={setActiveTab} counts={{ cold: detailedCounts.cold_lead, warm: detailedCounts.warm_lead, hot: detailedCounts.hot_lead }} />}
+              {activeTab === "contacted" && <ContactedTab onNavigate={setActiveTab} count={detailedCounts.contacted} />}
+              {activeTab === "action" && <ActionTab onNavigate={setActiveTab} counts={{ interested: detailedCounts.interested, not_interested: detailedCounts.not_interested }} />}
+              {activeTab === "outcome" && <OutcomeTab onNavigate={setActiveTab} counts={{ enrolled: detailedCounts.enrolled, lost: detailedCounts.lost }} />}
             </div>
           </main>
       </div>

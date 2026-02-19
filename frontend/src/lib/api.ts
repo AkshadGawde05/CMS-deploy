@@ -1014,6 +1014,7 @@ export interface EnquiryDTO {
   nextFollowUpDate?: Date;
   tags?: string[];
   notes?: string;
+  notesHistory?: NoteHistory[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1024,6 +1025,12 @@ export interface ContactAttempt {
   response: 'answered' | 'no_answer' | 'busy' | 'invalid_number';
   notes?: string;
   nextFollowUp?: Date;
+}
+
+export interface NoteHistory {
+  note: string;
+  addedBy?: { _id: string; fname?: string; lname?: string; name?: string };
+  addedAt: Date;
 }
 
 export interface EnquiryAnalytics {
@@ -1139,6 +1146,17 @@ export const addContactAttempt = async (
   }
 ): Promise<{ success: boolean; message: string; data: EnquiryDTO }> => {
   const response = await api.post(`/api/enquiries/${id}/contact`, contactData);
+  return response.data;
+};
+
+// Add note with timestamp
+export const addEnquiryNote = async (
+  id: string,
+  noteData: {
+    note: string;
+  }
+): Promise<{ success: boolean; message: string; data: EnquiryDTO }> => {
+  const response = await api.post(`/api/enquiries/${id}/note`, noteData);
   return response.data;
 };
 

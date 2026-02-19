@@ -65,9 +65,15 @@ export default function LecturesPage() {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [archivedFilter, setArchivedFilter] = useState('active');
+  const [courseFilter, setCourseFilter] = useState('all');
+  const [batchFilter, setBatchFilter] = useState('all');
+  const [availableCourses, setAvailableCourses] = useState<Array<{id: string, name: string}>>([]);
+  const [availableBatches, setAvailableBatches] = useState<Array<{id: string, name: string}>>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [editingLecture, setEditingLecture] = useState<Lecture | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     console.log("🔍 [FRONTEND] useEffect triggered, archivedFilter:", archivedFilter);
@@ -77,8 +83,10 @@ export default function LecturesPage() {
 
   useEffect(() => {
     filterLectures();
+    extractFiltersData();
+    setCurrentPage(1); // Reset to first page when filters change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, archivedFilter, lectures]);
+  }, [searchQuery, archivedFilter, courseFilter, batchFilter, lectures]);
 
   const fetchLectures = async () => {
     try {
@@ -128,10 +136,42 @@ export default function LecturesPage() {
       );
     }
 
-    // Filter is already applied by the API call in fetchLectures
-    // Just apply search here
+    if (courseFilter !== 'all') {
+      filtered = filtered.filter(lecture => {
+        const courseId = typeof lecture.course_id === 'object' ? lecture.course_id?._id : lecture.course_id;
+        return String(courseId) === courseFilter;
+      });
+    }
+
+    if (batchFilter !== 'all') {
+      filtered = filtered.filter(lecture => {
+        const batchId = typeof lecture.batch_id === 'object' ? lecture.batch_id?._id : lecture.batch_id;
+        return String(batchId) === batchFilter;
+      });
+    }
 
     setFilteredLectures(filtered);
+  };
+
+  const extractFiltersData = () => {
+    const coursesMap = new Map<string, string>();
+    const batchesMap = new Map<string, string>();
+
+    lectures.forEach(lecture => {
+      if (lecture.course_id) {
+        const courseId = typeof lecture.course_id === 'object' ? lecture.course_id._id : lecture.course_id;
+        const courseName = typeof lecture.course_id === 'object' ? lecture.course_id.name : 'Unknown Course';
+        coursesMap.set(courseId, courseName);
+      }
+      if (lecture.batch_id) {
+        const batchId = typeof lecture.batch_id === 'object' ? lecture.batch_id._id : lecture.batch_id;
+        const batchName = typeof lecture.batch_id === 'object' ? lecture.batch_id.name : 'Unknown Batch';
+        batchesMap.set(batchId, batchName);
+      }
+    });
+    
+    setAvailableCourses(Array.from(coursesMap, ([id, name]) => ({ id, name })));
+    setAvailableBatches(Array.from(batchesMap, ([id, name]) => ({ id, name })));
   };
 
   const handleDelete = async (id: string) => {
@@ -238,6 +278,19 @@ export default function LecturesPage() {
     return Math.round(((lecture.attended_students || 0) / lecture.total_students) * 100);
   };
 
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(filteredLectures.length / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedLectures = filteredLectures.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   return (
     <ProtectedRoute allowedRoles={["Admin", "SuperAdmin", "Teacher", "Student", "Parent"]}>
       <div className="flex min-h-screen bg-gray-50">
@@ -336,7 +389,27 @@ export default function LecturesPage() {
                   className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700"
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <select
+                  value={courseFilter}
+                  onChange={(e) => setCourseFilter(e.target.value)}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-800 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="all">All Courses</option>
+                  {availableCourses.map(course => (
+                    <option key={course.id} value={course.id}>{course.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={batchFilter}
+                  onChange={(e) => setBatchFilter(e.target.value)}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-800 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="all">All Batches</option>
+                  {availableBatches.map(batch => (
+                    <option key={batch.id} value={batch.id}>{batch.name}</option>
+                  ))}
+                </select>
                 <select
                   value={archivedFilter}
                   onChange={(e) => setArchivedFilter(e.target.value)}
@@ -403,14 +476,14 @@ export default function LecturesPage() {
                           {error}
                         </td>
                       </tr>
-                    ) : filteredLectures.length === 0 ? (
+                    ) : paginatedLectures.length === 0 ? (
                       <tr>
                         <td colSpan={canEdit ? 8 : 7} className="px-6 py-12 text-center text-sm text-gray-500">
                           No lectures found
                         </td>
                       </tr>
                     ) : (
-                      filteredLectures.map((lecture) => {
+                      paginatedLectures.map((lecture) => {
                         const attendancePercentage = getAttendancePercentage(lecture);
                         
                         return (
@@ -529,12 +602,12 @@ export default function LecturesPage() {
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 text-center text-sm text-red-500">
                   {error}
                 </div>
-              ) : filteredLectures.length === 0 ? (
+              ) : paginatedLectures.length === 0 ? (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 text-center text-sm text-gray-500">
                   No lectures found
                 </div>
               ) : (
-                filteredLectures.map((lecture) => {
+                paginatedLectures.map((lecture) => {
                   const attendancePercentage = getAttendancePercentage(lecture);
                   
                   return (
@@ -651,10 +724,59 @@ export default function LecturesPage() {
 
             {/* Summary */}
             {filteredLectures.length > 0 && (
-              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <p className="text-xs sm:text-sm text-gray-600 text-center sm:text-left">
-                  Showing {filteredLectures.length} of {lectures.length} lectures
+                  Showing {startIndex + 1}-{Math.min(endIndex, filteredLectures.length)} of {filteredLectures.length} lectures
                 </p>
+                <div className="flex gap-1 flex-wrap justify-center sm:justify-end">
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 text-xs text-gray-800 font-medium border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Previous
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    // Show first page, last page, current page, and pages around current
+                    if (page === 1 || page === totalPages) return true;
+                    if (Math.abs(page - currentPage) <= 1) return true;
+                    return false;
+                  }).map((show, _, arr) => {
+                    const pages = Array.from({ length: totalPages }, (_, i) => i + 1).filter((page) => {
+                      if (page === 1 || page === totalPages) return true;
+                      if (Math.abs(page - currentPage) <= 1) return true;
+                      return false;
+                    });
+                    return pages;
+                  }).flat().map((page, index, array) => {
+                    // Add ellipsis
+                    const showEllipsisBefore = index > 0 && page - array[index - 1] > 1;
+                    return (
+                      <React.Fragment key={page}>
+                        {showEllipsisBefore && (
+                          <span className="px-2 text-gray-500">...</span>
+                        )}
+                        <button
+                          onClick={() => handlePageChange(page)}
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded border text-xs font-medium transition-colors ${
+                            currentPage === page
+                              ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                              : 'text-gray-800 border border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 text-xs text-gray-800 font-medium border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             )}
           </div>

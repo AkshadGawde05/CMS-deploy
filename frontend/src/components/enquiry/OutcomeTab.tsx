@@ -1,12 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Edit, Eye, TrendingUp, TrendingDown } from "lucide-react";
+import { Search, Edit, Eye, TrendingUp, TrendingDown, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { getEnquiriesByStatus, updateEnquiryStatus, type EnquiryDTO } from "@/lib/api";
 import EditEnquiryModal from "./EditEnquiryModal";
 import ViewEnquiryModal from "./ViewEnquiryModal";
 
-export default function OutcomeTab() {
+type TabType = "rawdata" | "leads" | "contacted" | "action" | "outcome";
+
+interface OutcomeTabProps {
+  onNavigate?: (tab: TabType) => void;
+  counts?: { enrolled: number; lost: number };
+}
+
+export default function OutcomeTab({ onNavigate, counts = { enrolled: 0, lost: 0 } }: OutcomeTabProps) {
   const [enquiries, setEnquiries] = useState<EnquiryDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -42,13 +49,32 @@ export default function OutcomeTab() {
     }
   };
 
+  const handleMoveBack = async (id: string) => {
+    try {
+      // Move back from outcome to action (interested status)
+      await updateEnquiryStatus(id, 'interested', `Moved back to action from outcome`);
+      fetchEnquiries();
+    } catch {
+      alert("Failed to move back");
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6">
-      {/* Header */}
+      {/* Header with Back Button */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div>
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Outcome Tracking</h2>
-          <p className="text-xs sm:text-sm text-gray-600">Track final outcomes - conversions and lost enquiries</p>
+        <button
+          onClick={() => onNavigate?.("action")}
+          className="flex-shrink-0 p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition border-2 border-blue-300 shadow-sm"
+          title="Back to Action"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="flex items-center gap-2 w-full">
+          <div>
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Outcome Tracking</h2>
+            <p className="text-xs sm:text-sm text-gray-600">Track final outcomes - conversions and lost enquiries</p>
+          </div>
         </div>
       </div>
 
@@ -72,7 +98,7 @@ export default function OutcomeTab() {
                   : "bg-gray-100 text-gray-600"
               }`}
             >
-              {enquiries.length}
+              {counts.enrolled}
             </span>
           </button>
           <button
@@ -92,7 +118,7 @@ export default function OutcomeTab() {
                   : "bg-gray-100 text-gray-600"
               }`}
             >
-              {enquiries.length}
+              {counts.lost}
             </span>
           </button>
         </nav>
@@ -186,10 +212,18 @@ export default function OutcomeTab() {
                       
                       <button
                         onClick={() => setEditingEnquiry(enquiry)}
-                        className="p-1 text-gray-500 hover:text-blue-600 transition"
+                        className="p-1.5 text-purple-600 hover:bg-purple-50 rounded transition"
                         title="Edit"
                       >
                         <Edit className="h-4 w-4" />
+                      </button>
+
+                      <button
+                        onClick={() => handleMoveBack(enquiry._id)}
+                        className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition"
+                        title="Move Back"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
                       </button>
                       
                       {outcomeType === 'lost' && (
@@ -262,7 +296,7 @@ export default function OutcomeTab() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-gray-100">
+              <div className="flex flex-wrap items-center justify-end gap-1 pt-3 border-t border-gray-100">
                 <button
                   onClick={() => setViewingEnquiry(enquiry)}
                   className="p-2 text-gray-600 hover:bg-gray-100 rounded transition"
@@ -272,10 +306,17 @@ export default function OutcomeTab() {
                 </button>
                 <button
                   onClick={() => setEditingEnquiry(enquiry)}
-                  className="p-2 text-blue-600 hover:bg-blue-50 rounded transition"
+                  className="p-2 text-purple-600 hover:bg-purple-50 rounded transition"
                   title="Edit"
                 >
                   <Edit className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => handleMoveBack(enquiry._id)}
+                  className="p-2 text-orange-600 hover:bg-orange-50 rounded transition"
+                  title="Back"
+                >
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
                 {outcomeType === 'lost' && (
                   <button

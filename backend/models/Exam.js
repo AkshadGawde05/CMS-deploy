@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 
 const examSchema = new mongoose.Schema({
+  branchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    required: false, // Will be set to true after migration
+    index: true,
+  },
   batch_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Batches",

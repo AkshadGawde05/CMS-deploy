@@ -175,6 +175,24 @@ const enquirySchema = new mongoose.Schema(
     lastContactedAt: Date,
     nextFollowUpDate: Date,
     tags: [String],
+    // Timestamped notes history
+    notesHistory: [
+      {
+        note: {
+          type: String,
+          required: true,
+        },
+        addedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        addedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    // Deprecated: Keep for backward compatibility, use notesHistory instead
     notes: String,
   },
   {

@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 
 const ParentSchema = new mongoose.Schema({
+  branchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Branch",
+    required: false, // Will be set to true after migration
+    index: true,
+  },
   user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
