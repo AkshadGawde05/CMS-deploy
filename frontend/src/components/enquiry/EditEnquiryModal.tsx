@@ -1,9 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { X, Star } from "lucide-react";
-import { updateEnquiry } from "@/lib/api";
+import { X, Star, Calendar, User } from "lucide-react";
+import { updateEnquiry, addEnquiryNote } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
+
+interface NoteHistory {
+  note: string;
+  addedBy?: { _id: string; fname?: string; lname?: string; name?: string };
+  addedAt: Date;
+}
 
 interface Enquiry {
   _id: string;
@@ -28,6 +34,7 @@ interface Enquiry {
   academicYear?: string;
   schoolName?: string;
   status: string;
+  notesHistory?: NoteHistory[];
 }
 
 interface EditEnquiryModalProps {
@@ -154,25 +161,23 @@ export default function EditEnquiryModal({
 
     try {
       setSaving(true);
-      // You can extend this to save the description to a notes/history field
-      const existingNotes = (enquiry as Record<string, unknown>).notes as string | undefined;
-      await updateEnquiry(enquiry._id, { 
-        notes: existingNotes ? `${existingNotes}\n\n${new Date().toLocaleString()}: ${description}` : `${new Date().toLocaleString()}: ${description}`
-      });
+      // Use the new note endpoint with timestamp
+      await addEnquiryNote(enquiry._id, { note: description.trim() });
       showToast({
         type: 'success',
         title: 'Note Added',
-        message: 'Description has been added successfully'
+        message: 'Note has been added successfully with timestamp'
       });
       setDescription(""); // Clear the description field
+      onSuccess(); // Refresh the parent component to show updated notes
     } catch (error) {
-      console.error("Add description error:", error);
+      console.error("Add note error:", error);
       const err = error as { response?: { data?: { message?: string } }; message?: string };
-      const errorMessage = err?.response?.data?.message || err?.message || "Failed to add description";
+      const errorMessage = err?.response?.data?.message || err?.message || "Failed to add note";
       
       showToast({
         type: 'error',
-        title: 'Failed to Add Description',
+        title: 'Failed to Add Note',
         message: errorMessage
       });
     } finally {
@@ -591,7 +596,7 @@ export default function EditEnquiryModal({
 
               {/* Add Description / History */}
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Add Description / History</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Add Note</h4>
                 <textarea
                   rows={4}
                   value={description}
@@ -608,6 +613,31 @@ export default function EditEnquiryModal({
                   Add Note
                 </button>
               </div>
+
+              {/* Notes History */}
+              {enquiry.notesHistory && enquiry.notesHistory.length > 0 && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Notes History</h4>
+                  <div className="space-y-3 max-h-64 overflow-y-auto">
+                    {/* Display notes in reverse chronological order (newest first) */}
+                    {[...enquiry.notesHistory].reverse().map((noteItem, index) => (
+                      <div key={index} className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs text-gray-600 mb-1 flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(noteItem.addedAt).toLocaleString()}
+                        </div>
+                        {noteItem.addedBy && (
+                          <div className="text-xs text-gray-600 mb-2 flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            {noteItem.addedBy.name || `${noteItem.addedBy.fname || ''} ${noteItem.addedBy.lname || ''}`.trim() || 'Unknown'}
+                          </div>
+                        )}
+                        <p className="text-sm text-gray-700 break-words">{noteItem.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -220,14 +220,14 @@ const BranchTestingDashboard = () => {
     };
 
     return (
-        <div className="container mx-auto p-6 space-y-6">
-            <div className="flex items-center justify-between">
+        <div className="container mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
                 <div>
-                    <h1 className="text-3xl font-bold flex items-center gap-2">
-                        <Building2 className="h-8 w-8" />
-                        Branch Testing Dashboard
+                    <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+                        <Building2 className="h-6 w-6 sm:h-8 sm:w-8" />
+                        <span className="break-words">Branch Testing Dashboard</span>
                     </h1>
-                    <p className="text-muted-foreground mt-1">
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                         Test multi-branch filtering functionality
                     </p>
                 </div>
@@ -254,12 +254,12 @@ const BranchTestingDashboard = () => {
                     <CardDescription>Choose which branch to view data for</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex gap-4">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                         <Select
                             value={selectedBranch?._id}
                             onValueChange={(id) => setSelectedBranch(branches.find(b => b._id === id))}
                         >
-                            <SelectTrigger className="w-[300px]">
+                            <SelectTrigger className="w-full sm:w-[300px]">
                                 <SelectValue placeholder="Select a branch" />
                             </SelectTrigger>
                             <SelectContent>
@@ -271,7 +271,7 @@ const BranchTestingDashboard = () => {
                             </SelectContent>
                         </Select>
                         {selectedBranch && (
-                            <Badge variant="outline" className="flex items-center gap-2">
+                            <Badge variant="outline" className="flex items-center gap-2 w-fit">
                                 <Building2 className="h-3 w-3" />
                                 {selectedBranch.name}
                             </Badge>
@@ -282,12 +282,12 @@ const BranchTestingDashboard = () => {
 
             {/* Main Tabs */}
             <Tabs defaultValue="branches" className="w-full">
-                <TabsList className="grid w-full grid-cols-5">
-                    <TabsTrigger value="branches">Branches</TabsTrigger>
-                    <TabsTrigger value="feeplans">Fee Plans</TabsTrigger>
-                    <TabsTrigger value="expenses">Expenses</TabsTrigger>
-                    <TabsTrigger value="batches">Batches</TabsTrigger>
-                    <TabsTrigger value="stats">Stats</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 auto-rows-auto">
+                    <TabsTrigger value="branches" className="text-xs sm:text-sm">Branches</TabsTrigger>
+                    <TabsTrigger value="feeplans" className="text-xs sm:text-sm">Fee Plans</TabsTrigger>
+                    <TabsTrigger value="expenses" className="text-xs sm:text-sm">Expenses</TabsTrigger>
+                    <TabsTrigger value="batches" className="text-xs sm:text-sm">Batches</TabsTrigger>
+                    <TabsTrigger value="stats" className="text-xs sm:text-sm">Stats</TabsTrigger>
                 </TabsList>
 
                 {/* Branches Tab */}
@@ -298,7 +298,7 @@ const BranchTestingDashboard = () => {
                             <CardDescription>Create and manage branches</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <div>
                                     <Label>Branch Name</Label>
                                     <Input
@@ -329,24 +329,24 @@ const BranchTestingDashboard = () => {
                                     </Select>
                                 </div>
                             </div>
-                            <Button onClick={createBranch} disabled={loading || !newBranch.name || !newBranch.code}>
+                            <Button onClick={createBranch} disabled={loading || !newBranch.name || !newBranch.code} className="w-full sm:w-auto">
                                 <Plus className="h-4 w-4 mr-2" />
                                 Create Branch
                             </Button>
 
                             <div className="mt-6">
-                                <h3 className="font-semibold mb-3">Existing Branches</h3>
-                                <div className="grid grid-cols-2 gap-4">
+                                <h3 className="font-semibold mb-3 text-sm sm:text-base">Existing Branches</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                                     {branches.map(branch => (
                                         <Card key={branch._id}>
                                             <CardContent className="pt-6">
-                                                <div className="flex justify-between items-start">
-                                                    <div>
-                                                        <h4 className="font-semibold">{branch.name}</h4>
-                                                        <p className="text-sm text-muted-foreground">Code: {branch.code}</p>
-                                                        <p className="text-xs text-muted-foreground mt-1">ID: {branch._id}</p>
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <h4 className="font-semibold text-sm sm:text-base break-words">{branch.name}</h4>
+                                                        <p className="text-xs text-muted-foreground">Code: {branch.code}</p>
+                                                        <p className="text-xs text-muted-foreground mt-1 break-all">ID: {branch._id}</p>
                                                     </div>
-                                                    <Badge variant={branch.status === 'active' ? 'default' : 'secondary'}>
+                                                    <Badge variant={branch.status === 'active' ? 'default' : 'secondary'} className="whitespace-nowrap flex-shrink-0">
                                                         {branch.status}
                                                     </Badge>
                                                 </div>
@@ -412,7 +412,7 @@ const BranchTestingDashboard = () => {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-4 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                                 <div>
                                     <Label>Title</Label>
                                     <Input
@@ -453,13 +453,12 @@ const BranchTestingDashboard = () => {
                                     />
                                 </div>
                             </div>
-                            <Button onClick={createExpense} disabled={loading || !selectedBranch || !newExpense.title || !newExpense.amount}>
-                                <Plus className="h-4 w-4 mr-2" />
-                                Create Expense
-                            </Button>
-
-                            <div className="flex gap-2 mt-4">
-                                <Button onClick={fetchExpenses} disabled={loading || !selectedBranch} variant="outline">
+                            <div className="flex flex-col sm:flex-row gap-2">
+                                <Button onClick={createExpense} disabled={loading || !selectedBranch || !newExpense.title || !newExpense.amount} className="flex-1 sm:flex-none">
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Create Expense
+                                </Button>
+                                <Button onClick={fetchExpenses} disabled={loading || !selectedBranch} variant="outline" className="flex-1 sm:flex-none">
                                     Load Expenses
                                 </Button>
                             </div>
@@ -468,14 +467,14 @@ const BranchTestingDashboard = () => {
                                 {expenses.map(expense => (
                                     <Card key={expense._id}>
                                         <CardContent className="pt-4">
-                                            <div className="flex justify-between">
-                                                <div>
-                                                    <p className="font-semibold">{expense.title}</p>
-                                                    <p className="text-sm text-muted-foreground">
+                                            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="font-semibold text-sm sm:text-base break-words">{expense.title}</p>
+                                                    <p className="text-xs sm:text-sm text-muted-foreground">
                                                         {expense.category} • ₹{expense.amount} • {new Date(expense.date).toLocaleDateString()}
                                                     </p>
                                                 </div>
-                                                <Badge variant={expense.status === 'paid' ? 'default' : 'secondary'}>
+                                                <Badge variant={expense.status === 'paid' ? 'default' : 'secondary'} className="w-fit">
                                                     {expense.status}
                                                 </Badge>
                                             </div>
@@ -502,21 +501,21 @@ const BranchTestingDashboard = () => {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Button onClick={fetchBatches} disabled={loading || !selectedBranch}>
+                            <Button onClick={fetchBatches} disabled={loading || !selectedBranch} className="w-full sm:w-auto">
                                 Load Batches
                             </Button>
                             <div className="mt-4 space-y-2">
                                 {batches.map(batch => (
                                     <Card key={batch._id}>
                                         <CardContent className="pt-4">
-                                            <div className="flex justify-between">
-                                                <div>
-                                                    <p className="font-semibold">{batch.name}</p>
-                                                    <p className="text-sm text-muted-foreground">
+                                            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="font-semibold text-sm sm:text-base">{batch.name}</p>
+                                                    <p className="text-xs sm:text-sm text-muted-foreground">
                                                         {batch.course_id?.name || 'Unknown Course'}
                                                     </p>
                                                 </div>
-                                                <Badge variant="outline">
+                                                <Badge variant="outline" className="w-fit">
                                                     Students: {batch.studentCount || 0}
                                                 </Badge>
                                             </div>
@@ -524,7 +523,7 @@ const BranchTestingDashboard = () => {
                                     </Card>
                                 ))}
                                 {batches.length === 0 && (
-                                    <p className="text-muted-foreground text-center py-8">
+                                    <p className="text-muted-foreground text-center py-8 text-sm">
                                         No batches found. Click "Load Batches" to fetch data.
                                     </p>
                                 )}
@@ -543,21 +542,21 @@ const BranchTestingDashboard = () => {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Button onClick={fetchExpenseStats} disabled={loading || !selectedBranch}>
+                            <Button onClick={fetchExpenseStats} disabled={loading || !selectedBranch} className="w-full sm:w-auto">
                                 Load Stats
                             </Button>
                             {stats && (
-                                <div className="mt-4 grid grid-cols-2 gap-4">
+                                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                     <Card>
                                         <CardContent className="pt-6">
-                                            <p className="text-sm text-muted-foreground">Total Amount</p>
-                                            <p className="text-2xl font-bold">₹{stats.stats?.totalAmount || 0}</p>
+                                            <p className="text-xs sm:text-sm text-muted-foreground">Total Amount</p>
+                                            <p className="text-xl sm:text-2xl font-bold mt-2">₹{stats.stats?.totalAmount || 0}</p>
                                         </CardContent>
                                     </Card>
                                     <Card>
                                         <CardContent className="pt-6">
-                                            <p className="text-sm text-muted-foreground">Pending</p>
-                                            <p className="text-2xl font-bold">₹{stats.stats?.pending || 0}</p>
+                                            <p className="text-xs sm:text-sm text-muted-foreground">Pending</p>
+                                            <p className="text-xl sm:text-2xl font-bold mt-2">₹{stats.stats?.pending || 0}</p>
                                         </CardContent>
                                     </Card>
                                 </div>
@@ -570,19 +569,19 @@ const BranchTestingDashboard = () => {
             {/* Debug Info */}
             <Card className="mt-8 border-dashed">
                 <CardHeader>
-                    <CardTitle className="text-sm font-mono">Debug Information</CardTitle>
+                    <CardTitle className="text-xs sm:text-sm font-mono">Debug Information</CardTitle>
                 </CardHeader>
-                <CardContent className="text-xs font-mono space-y-2">
-                    <div>API_URL: {API_URL}</div>
-                    <div>Selected Branch: {selectedBranch ? `${selectedBranch.name} (${selectedBranch._id})` : 'None'}</div>
+                <CardContent className="text-xs font-mono space-y-2 overflow-x-auto">
+                    <div className="break-all">API_URL: {API_URL}</div>
+                    <div className="break-all">Selected Branch: {selectedBranch ? `${selectedBranch.name} (${selectedBranch._id})` : 'None'}</div>
                     <div>Loading: {loading ? 'True' : 'False'}</div>
                     <div>Branches Count: {branches.length}</div>
-                    {error && <div className="text-red-500">Last Error: {error}</div>}
+                    {error && <div className="text-red-500 break-all">Last Error: {error}</div>}
                     <div className="mt-4">
                         <Button variant="outline" size="sm" onClick={() => {
                             console.log('Manual refresh triggered');
                             fetchBranches();
-                        }}>
+                        }} className="w-full sm:w-auto">
                             Force Refresh Branches
                         </Button>
                     </div>

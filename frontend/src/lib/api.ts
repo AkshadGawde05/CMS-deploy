@@ -670,8 +670,11 @@ export interface FeePlanDTO {
   discount_types?: Array<{ code: string; name: string; discount_percent: number }>;
 }
 
-export const getFeePlans = async () => {
-  const { data } = await api.get<{ success: boolean; plans: FeePlanDTO[] }>(`/api/fee-plans`);
+export const getFeePlans = async (filters?: { batch_id?: string }) => {
+  const params = new URLSearchParams();
+  if (filters?.batch_id) params.append('batch_id', filters.batch_id);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const { data } = await api.get<{ success: boolean; plans: FeePlanDTO[] }>(`/api/fee-plans${suffix}`);
   return data;
 };
 
@@ -1014,6 +1017,7 @@ export interface EnquiryDTO {
   nextFollowUpDate?: Date;
   tags?: string[];
   notes?: string;
+  notesHistory?: NoteHistory[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1024,6 +1028,12 @@ export interface ContactAttempt {
   response: 'answered' | 'no_answer' | 'busy' | 'invalid_number';
   notes?: string;
   nextFollowUp?: Date;
+}
+
+export interface NoteHistory {
+  note: string;
+  addedBy?: { _id: string; fname?: string; lname?: string; name?: string };
+  addedAt: Date;
 }
 
 export interface EnquiryAnalytics {
@@ -1042,6 +1052,8 @@ export const getEnquiries = async (params?: {
   source?: string;
   interest?: string;
   assignedTo?: string;
+  from?: string;
+  to?: string;
   page?: number;
   limit?: number;
 }): Promise<{
@@ -1067,6 +1079,9 @@ export const getEnquiriesByStatus = async (
     search?: string;
     source?: string;
     interest?: string;
+    assignedTo?: string;
+    from?: string;
+    to?: string;
   }
 ): Promise<{
   success: boolean;
@@ -1081,6 +1096,19 @@ export const getEnquiriesByStatus = async (
   console.log(`🔧 Making API call to /api/enquiries/${status}`, params);
   const response = await api.get(`/api/enquiries/${status}`, { params });
   console.log(`🔧 API response for ${status}:`, response.data);
+  return response.data;
+};
+
+// Get metadata for enquiry filters
+export const getEnquiryMeta = async (): Promise<{
+  success: boolean;
+  data: {
+    sources: string[];
+    interests: string[];
+    users: { _id: string; name: string; role: string }[];
+  };
+}> => {
+  const response = await api.get("/api/enquiries/meta");
   return response.data;
 };
 
@@ -1139,6 +1167,17 @@ export const addContactAttempt = async (
   }
 ): Promise<{ success: boolean; message: string; data: EnquiryDTO }> => {
   const response = await api.post(`/api/enquiries/${id}/contact`, contactData);
+  return response.data;
+};
+
+// Add note with timestamp
+export const addEnquiryNote = async (
+  id: string,
+  noteData: {
+    note: string;
+  }
+): Promise<{ success: boolean; message: string; data: EnquiryDTO }> => {
+  const response = await api.post(`/api/enquiries/${id}/note`, noteData);
   return response.data;
 };
 
@@ -1202,43 +1241,35 @@ export const getEnquiryAnalytics = async (): Promise<{
 
 // Helper functions for specific statuses
 export const getRawEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('raw', params);
-  return response.data;  // This is already the data array from the API response
+  return await getEnquiriesByStatus('raw', params);
 };
 
 export const getColdLeads = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('cold_lead', params);
-  return response.data;
+  return await getEnquiriesByStatus('cold_lead', params);
 };
 
 export const getWarmLeads = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('warm_lead', params);
-  return response.data;
+  return await getEnquiriesByStatus('warm_lead', params);
 };
 
 export const getHotLeads = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('hot_lead', params);
-  return response.data;
+  return await getEnquiriesByStatus('hot_lead', params);
 };
 
 export const getContactedEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('contacted', params);
-  return response.data;
+  return await getEnquiriesByStatus('contacted', params);
 };
 
 export const getInterestedEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('interested', params);
-  return response.data;
+  return await getEnquiriesByStatus('interested', params);
 };
 
 export const getEnrolledEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('enrolled', params);
-  return response.data;
+  return await getEnquiriesByStatus('enrolled', params);
 };
 
 export const getLostEnquiries = async (params?: Record<string, unknown>) => {
-  const response = await getEnquiriesByStatus('lost', params);
-  return response.data;
+  return await getEnquiriesByStatus('lost', params);
 };
 
 // Get count for each status

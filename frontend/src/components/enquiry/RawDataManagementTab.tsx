@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { 
-  Search, 
-  Filter, 
-  Upload, 
-  Plus, 
-  Edit, 
-  Trash2, 
+import {
+  Search,
+  Filter,
+  Upload,
+  Plus,
+  Edit,
+  Trash2,
   Eye,
   ArrowRight
 } from "lucide-react";
@@ -19,49 +19,66 @@ import EditEnquiryModal from "./EditEnquiryModal";
 import ViewEnquiryModal from "./ViewEnquiryModal";
 import { getRawEnquiries, deleteEnquiry, updateEnquiryStatus, type EnquiryDTO } from "@/lib/api";
 
-interface RawEnquiry extends EnquiryDTO {
-  status: "raw";
+type TabType = "rawdata" | "leads" | "contacted" | "action" | "outcome";
+
+interface RawDataManagementTabProps {
+  sources: string[];
+  interests: string[];
+  users: { _id: string; name: string; role: string }[];
+  onAction?: () => void;
 }
 
-export default function RawDataManagementTab() {
+export default function RawDataManagementTab({ sources, interests, users, onAction }: RawDataManagementTabProps) {
   const { hasPermission } = useAuth();
   const { showToast } = useToast();
-  const [enquiries, setEnquiries] = useState<RawEnquiry[]>([]);
+  const [enquiries, setEnquiries] = useState<EnquiryDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [interestFilter, setInterestFilter] = useState("all");
-  
+  const [assignedFilter, setAssignedFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
-  const [selectedEnquiry, setSelectedEnquiry] = useState<RawEnquiry | null>(null);
+  const [selectedEnquiry, setSelectedEnquiry] = useState<EnquiryDTO | null>(null);
   const [selectedEnquiries, setSelectedEnquiries] = useState<string[]>([]);
 
-  const sources = ["Website", "Facebook", "Google Ads", "Referral", "Walk-in", "Phone Call"];
-  const interests = ["Full Stack", "Data Science", "Digital Marketing", "UI/UX", "Python", "Java"];
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const LIMIT = 50;
+
 
   const fetchEnquiries = useCallback(async () => {
     try {
       setLoading(true);
       console.log("🔄 Fetching enquiries...");
-      const params: Record<string, string | number> = { page: 1, limit: 100 };
+      const params: Record<string, string | number> = { page, limit: LIMIT };
       if (search) params.search = search;
       if (sourceFilter !== 'all') params.source = sourceFilter;
       if (interestFilter !== 'all') params.interest = interestFilter;
-      
+      if (assignedFilter !== 'all') params.assignedTo = assignedFilter;
+      if (fromDate) params.from = fromDate;
+      if (toDate) params.to = toDate;
+
       const response = await getRawEnquiries(params);
       console.log("📊 Enquiries response:", response);
-      console.log("📊 Response type:", typeof response);
-      console.log("📊 Response keys:", Object.keys(response || {}));
-      
-      // Handle both possible response structures
-      const enquiriesData = Array.isArray(response) ? response : (response?.data || []);
-      console.log("📊 Enquiries data:", enquiriesData);
-      
-      setEnquiries(enquiriesData as RawEnquiry[]);
+
+      if (response && response.success) {
+        setEnquiries(response.data || []);
+        if (response.pagination) {
+          setTotalPages(response.pagination.total || 1);
+          setTotalRecords(response.pagination.totalRecords || 0);
+        }
+      } else {
+        setEnquiries([]);
+      }
       console.log("✅ Enquiries updated in state");
     } catch (error) {
       console.error("Failed to fetch enquiries", error);
@@ -73,11 +90,16 @@ export default function RawDataManagementTab() {
     } finally {
       setLoading(false);
     }
-  }, [search, sourceFilter, interestFilter, showToast]);
+  }, [page, search, sourceFilter, interestFilter, assignedFilter, fromDate, toDate, showToast]);
 
   useEffect(() => {
     fetchEnquiries();
   }, [fetchEnquiries]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [search, sourceFilter, interestFilter, assignedFilter, fromDate, toDate]);
 
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this enquiry?")) {
@@ -89,6 +111,7 @@ export default function RawDataManagementTab() {
           message: 'Enquiry has been deleted successfully'
         });
         fetchEnquiries();
+        onAction?.();
       } catch (error) {
         console.error("Failed to delete enquiry", error);
         showToast({
@@ -109,6 +132,7 @@ export default function RawDataManagementTab() {
         message: 'Enquiry has been moved to cold leads'
       });
       fetchEnquiries();
+      onAction?.();
     } catch (error) {
       console.error("Failed to move enquiry to leads", error);
       showToast({
@@ -121,7 +145,7 @@ export default function RawDataManagementTab() {
 
   const handleBulkMoveToLeads = async () => {
     if (selectedEnquiries.length === 0) return;
-    
+
     try {
       for (const id of selectedEnquiries) {
         await updateEnquiryStatus(id, 'cold_lead', 'Bulk moved to cold leads');
@@ -133,6 +157,7 @@ export default function RawDataManagementTab() {
       });
       setSelectedEnquiries([]);
       fetchEnquiries();
+      onAction?.();
     } catch (error) {
       console.error("Failed to move enquiries to leads", error);
       showToast({
@@ -143,23 +168,8 @@ export default function RawDataManagementTab() {
     }
   };
 
-  const filteredEnquiries = enquiries.filter((enquiry) => {
-    const searchTerm = search.toLowerCase();
-    const fullName = enquiry.fullName || `${enquiry.firstName || ''} ${enquiry.lastName || ''}`.trim() || enquiry.name || '';
-    
-    const matchesSearch = 
-      fullName.toLowerCase().includes(searchTerm) ||
-      (enquiry.firstName || '').toLowerCase().includes(searchTerm) ||
-      (enquiry.lastName || '').toLowerCase().includes(searchTerm) ||
-      enquiry.phone.includes(search) ||
-      enquiry.email?.toLowerCase().includes(searchTerm) ||
-      (enquiry.name || '').toLowerCase().includes(searchTerm); // backward compatibility
-    
-    const matchesSource = sourceFilter === "all" || enquiry.source === sourceFilter;
-    const matchesInterest = interestFilter === "all" || enquiry.interest === interestFilter;
-    
-    return matchesSearch && matchesSource && matchesInterest;
-  });
+  // No longer need client-side filtering since API handles it
+  const filteredEnquiries = enquiries;
 
   const handleSelectAll = () => {
     if (selectedEnquiries.length === filteredEnquiries.length) {
@@ -187,7 +197,7 @@ export default function RawDataManagementTab() {
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Raw Data Management</h2>
           <p className="text-xs sm:text-sm text-gray-600">Manage raw enquiry data and move to leads</p>
         </div>
-        
+
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           {hasPermission("canEditUsers") && (
             <>
@@ -240,11 +250,12 @@ export default function RawDataManagementTab() {
         </div>
 
         {/* Interest Filter */}
-        <div>
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
           <select
             value={interestFilter}
             onChange={(e) => setInterestFilter(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700"
           >
             <option value="all">All Interests</option>
             {interests.map(interest => (
@@ -252,6 +263,58 @@ export default function RawDataManagementTab() {
             ))}
           </select>
         </div>
+
+        {/* Assigned To Filter */}
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+          <select
+            value={assignedFilter}
+            onChange={(e) => setAssignedFilter(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none text-gray-700"
+          >
+            <option value="all">All Assigned</option>
+            {users.map(user => (
+              <option key={user._id} value={user._id}>{user.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date Range - From */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">From:</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-700"
+          />
+        </div>
+
+        {/* Date Range - To */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">To:</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-700"
+          />
+        </div>
+
+        {/* Clear Filters */}
+        <button
+          onClick={() => {
+            setSearch("");
+            setSourceFilter("all");
+            setInterestFilter("all");
+            setAssignedFilter("all");
+            setFromDate("");
+            setToDate("");
+          }}
+          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+        >
+          Clear All Filters
+        </button>
 
         {/* Bulk Actions */}
         {selectedEnquiries.length > 0 && (
@@ -370,7 +433,7 @@ export default function RawDataManagementTab() {
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      
+
                       {hasPermission("canEditUsers") && (
                         <button
                           onClick={() => {
@@ -383,7 +446,7 @@ export default function RawDataManagementTab() {
                           <Edit className="h-4 w-4" />
                         </button>
                       )}
-                      
+
                       <button
                         onClick={() => handleMoveToLeads(enquiry._id)}
                         className="p-1 text-gray-500 hover:text-green-600 transition"
@@ -391,7 +454,7 @@ export default function RawDataManagementTab() {
                       >
                         <ArrowRight className="h-4 w-4" />
                       </button>
-                      
+
                       {hasPermission("canEditUsers") && (
                         <button
                           onClick={() => handleDelete(enquiry._id)}
@@ -482,7 +545,7 @@ export default function RawDataManagementTab() {
                 >
                   <Eye className="h-4 w-4" />
                 </button>
-                
+
                 {hasPermission("canEditUsers") && (
                   <button
                     onClick={() => {
@@ -495,7 +558,7 @@ export default function RawDataManagementTab() {
                     <Edit className="h-4 w-4" />
                   </button>
                 )}
-                
+
                 <button
                   onClick={() => handleMoveToLeads(enquiry._id)}
                   className="p-2 text-green-600 hover:bg-green-50 rounded transition"
@@ -503,7 +566,7 @@ export default function RawDataManagementTab() {
                 >
                   <ArrowRight className="h-4 w-4" />
                 </button>
-                
+
                 {hasPermission("canEditUsers") && (
                   <button
                     onClick={() => handleDelete(enquiry._id)}
@@ -519,6 +582,34 @@ export default function RawDataManagementTab() {
         )}
       </div>
 
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 border-t border-gray-200 pt-4">
+          <div className="text-sm text-gray-500">
+            Showing {((page - 1) * LIMIT) + 1} to {Math.min(page * LIMIT, totalRecords)} of {totalRecords} entries
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50 transition"
+            >
+              Previous
+            </button>
+            <span className="px-3 py-1 text-sm bg-blue-50 text-blue-600 border border-blue-200 rounded">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50 transition"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       {showAddModal && (
         <AddEnquiryModal
@@ -526,6 +617,7 @@ export default function RawDataManagementTab() {
           onSuccess={() => {
             setShowAddModal(false);
             fetchEnquiries();
+            onAction?.();
           }}
         />
       )}
@@ -541,6 +633,7 @@ export default function RawDataManagementTab() {
             setShowEditModal(false);
             setSelectedEnquiry(null);
             fetchEnquiries();
+            onAction?.();
           }}
         />
       )}
@@ -563,6 +656,7 @@ export default function RawDataManagementTab() {
             setShowBulkUploadModal(false);
             console.log("🔄 Calling fetchEnquiries after bulk upload...");
             fetchEnquiries();
+            onAction?.();
             if (!failedEntries || failedEntries.length === 0) {
               showToast({
                 type: 'success',

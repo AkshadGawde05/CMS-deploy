@@ -79,6 +79,8 @@ const getCourseIcon = (courseName: string) => {
 export default function CoursesPage() {
   const { hasPermission } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
+  const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [batchesByCourse, setBatchesByCourse] = useState<Record<string, string[]>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editCourseData, setEditCourseData] = useState<Course | null>(null);
@@ -124,6 +126,24 @@ export default function CoursesPage() {
     }
     fetchCourses();
   }, [page, limit]);
+
+  useEffect(() => {
+    filterCourses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, courses]);
+
+  const filterCourses = () => {
+    let filtered = [...courses];
+
+    if (searchQuery) {
+      filtered = filtered.filter(course =>
+        course.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        course.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    setFilteredCourses(filtered);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -237,6 +257,20 @@ export default function CoursesPage() {
             </button>
           )}
         </div>
+
+        {/* Search Bar */}
+        <div className="mb-4 flex gap-2">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              placeholder="Search courses..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-2 text-sm border border-[#D0D5DD] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+            />
+          </div>
+        </div>
+
         <div className="bg-white rounded-xl border border-[#EAECF0] overflow-x-auto">
           <div className="min-w-[900px]">
             <table className="w-full">
@@ -256,10 +290,10 @@ export default function CoursesPage() {
                   <tr><td colSpan={canEdit ? 7 : 6} className="text-center py-8 text-[#475467]">Loading...</td></tr>
                 ) : error ? (
                   <tr><td colSpan={canEdit ? 7 : 6} className="text-center py-8 text-[#EF4444]">{error}</td></tr>
-                ) : courses.length === 0 ? (
+                ) : filteredCourses.length === 0 ? (
                   <tr><td colSpan={canEdit ? 7 : 6} className="text-center py-8 text-[#475467]">No courses found.</td></tr>
                 ) : (
-                  courses.map((course: Course) => {
+                  filteredCourses.map((course: Course) => {
                     const Icon = getCourseIcon(course.name);
                     return (
                       <tr key={course._id} className="border-b border-[#EAECF0] hover:bg-[#F9FAFB]">

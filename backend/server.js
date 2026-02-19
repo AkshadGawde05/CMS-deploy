@@ -1143,6 +1143,9 @@ app.patch("/api/courses/:id/restore", async (req, res) => {
 
 app.post("/api/courses", async (req, res) => {
   try {
+    // Get branchId from header or user's primaryBranch
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+
     let { course_start, course_end, ...rest } = req.body;
     course_start = new Date(course_start);
     course_end = new Date(course_end);
@@ -1164,6 +1167,7 @@ app.post("/api/courses", async (req, res) => {
       course_start,
       course_end,
       duration_months,
+      branchId, // Auto-assign branch
     });
     await course.save();
     res.json(course);
@@ -1262,6 +1266,9 @@ app.post("/api/students", async (req, res) => {
   console.log("📝 Creating new student with auto fee setup...");
 
   try {
+    // Get branchId from header or user's primaryBranch
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+
     const {
       email,
       phone,
@@ -1354,6 +1361,7 @@ app.post("/api/students", async (req, res) => {
 
     // 2. Create student profile
     const newStudent = new Student({
+      branchId, // Auto-assign branch
       user_id: user._id,
       fname: fname || user.fname,
       lname: lname || user.lname,
@@ -2341,6 +2349,9 @@ app.delete("/api/students/:id", async (req, res) => {
 // Create teacher (Admin only) - check or create user, then profile
 app.post("/api/teachers", async (req, res) => {
   try {
+    // Get branchId from header or user's primaryBranch
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+
     const {
       fname,
       lname,
@@ -2428,6 +2439,7 @@ app.post("/api/teachers", async (req, res) => {
     }
 
     const newTeacher = new Teacher({
+      branchId, // Auto-assign branch
       user_id: user._id,
       fname: user.fname,
       lname: user.lname,
@@ -2476,7 +2488,18 @@ app.post("/api/teachers", async (req, res) => {
 app.get("/api/teachers", async (req, res) => {
   console.log("📋 GET /api/teachers called");
   try {
-    const teachers = await Teacher.find()
+    // Add branch filter
+    const filter = {};
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      filter.branchId = branchId;
+    } else if (!isSuperAdmin && req.user?.primaryBranch) {
+      filter.branchId = req.user.primaryBranch;
+    }
+
+    const teachers = await Teacher.find(filter)
       .populate("user_id", "fname lname email phone status lastlogin")
       .populate({
         path: "assigned_batches",
@@ -2967,7 +2990,18 @@ app.delete("/api/teachers/:id", async (req, res) => {
 // Get all parents with details
 app.get("/api/parents", async (req, res) => {
   try {
-    const parents = await Parent.find()
+    // Add branch filter
+    const filter = {};
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      filter.branchId = branchId;
+    } else if (!isSuperAdmin && req.user?.primaryBranch) {
+      filter.branchId = req.user.primaryBranch;
+    }
+
+    const parents = await Parent.find(filter)
       .populate("user_id", "fname lname email phone status")
       .populate({
         path: "student_id",
@@ -3019,6 +3053,9 @@ app.get("/api/parents/:id", async (req, res) => {
 // Create parent profile
 app.post("/api/parents", async (req, res) => {
   try {
+    // Get branchId from header or user's primaryBranch
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+
     const {
       email,
       phone,
@@ -3105,6 +3142,7 @@ app.post("/api/parents", async (req, res) => {
 
     // Create parent profile
     const newParent = new Parent({
+      branchId, // Auto-assign branch
       user_id: user._id,
       fname: user.fname,
       lname: user.lname,
@@ -3194,6 +3232,16 @@ app.get("/api/lectures", async (req, res) => {
     } else {
       filter.archived = { $ne: true };
       filter.isArchived = { $ne: true };
+    }
+
+    // Add branch filter
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      filter.branchId = branchId;
+    } else if (!isSuperAdmin && req.user?.primaryBranch) {
+      filter.branchId = req.user.primaryBranch;
     }
 
     // Add filters
@@ -3770,6 +3818,9 @@ app.get("/api/lectures/:id", async (req, res) => {
 // Create new lecture
 app.post("/api/lectures", async (req, res) => {
   try {
+    // Get branchId from header or user's primaryBranch
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+
     const lectureData = req.body;
 
     // Validate that course exists
@@ -3810,6 +3861,7 @@ app.post("/api/lectures", async (req, res) => {
       batch_id: lectureData.batch_id,
     });
     lectureData.total_students = studentsInBatch;
+    lectureData.branchId = branchId; // Auto-assign branch
 
     const lecture = new Lecture(lectureData);
     await lecture.save();
@@ -4807,6 +4859,16 @@ app.get("/api/exams", verifyAuth, async (req, res) => {
     if (batch_id) filter.batch_id = batch_id;
     if (status) filter.status = status;
 
+    // Add branch filter
+    const isSuperAdmin = req.user?.isSuperAdmin;
+    const branchId = req.headers["x-branch-id"];
+
+    if (branchId) {
+      filter.branchId = branchId;
+    } else if (!isSuperAdmin && req.user?.primaryBranch) {
+      filter.branchId = req.user.primaryBranch;
+    }
+
     // Role-based filtering
     const userRole = req.user?.role;
     const userId = req.user?.id;
@@ -5213,6 +5275,9 @@ app.get("/api/exams/:id", async (req, res) => {
 // Create exam
 app.post("/api/exams", async (req, res) => {
   try {
+    // Get branchId from header or user's primaryBranch
+    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+
     const { batch_id, exam_type, subject, topic, date, total_marks } = req.body;
 
     // Validate required fields
@@ -5230,7 +5295,10 @@ app.post("/api/exams", async (req, res) => {
       });
     }
 
-    const exam = new Exam(req.body);
+    const exam = new Exam({
+      ...req.body,
+      branchId, // Auto-assign branch
+    });
     await exam.save();
 
     const populated = await Exam.findById(exam._id).populate(
@@ -5768,6 +5836,32 @@ app.get("/api/enquiries", verifyAuth, async (req, res) => {
     if (interest) filter.interest = interest;
     if (assignedTo) filter.assignedTo = assignedTo;
 
+    // Date range filtering
+    const { from, to } = req.query;
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = new Date(from);
+      if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+    }
+
+    // Branch filter
+    const branchId = req.headers["x-branch-id"];
+    if (branchId) {
+      const branchFilter = {
+        $or: [
+          { branchId: branchId },
+          { branchId: { $exists: false } },
+          { branchId: null }
+        ]
+      };
+
+      if (filter.$or) {
+        filter = { $and: [filter, branchFilter] };
+      } else {
+        filter = { ...filter, ...branchFilter };
+      }
+    }
+
     const skip = (page - 1) * limit;
 
     const enquiries = await Enquiry.find(filter)
@@ -5791,6 +5885,48 @@ app.get("/api/enquiries", verifyAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("Get enquiries error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get metadata for enquiry filters (Unique sources, interests, and users for assignment)
+app.get("/api/enquiries/meta", verifyAuth, async (req, res) => {
+  try {
+    const branchId = req.headers["x-branch-id"];
+    const filter = branchId ? {
+      $or: [
+        { branchId: branchId },
+        { branchId: null },
+        { branchId: { $exists: false } }
+      ]
+    } : {};
+
+    const [sources, interests, users] = await Promise.all([
+      Enquiry.distinct("source", filter),
+      Enquiry.distinct("interest", filter),
+      User.find({
+        status: true,
+        role: { $in: ["Admin", "SuperAdmin", "Teacher"] }
+      }).select("name fname lname email role")
+    ]);
+
+    // Format users for selection
+    const formattedUsers = users.map(u => ({
+      _id: u._id,
+      name: u.name || `${u.fname} ${u.lname}`,
+      role: u.role
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        sources: sources.filter(Boolean).sort(),
+        interests: interests.filter(Boolean).sort(),
+        users: formattedUsers
+      }
+    });
+  } catch (err) {
+    console.error("Enquiry meta error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -5859,11 +5995,72 @@ app.get("/api/enquiries/template", async (req, res) => {
   }
 });
 
+// Get count for each status - for tab badges (MUST BE BEFORE :status route)
+app.get("/api/enquiries/counts", verifyAuth, async (req, res) => {
+  try {
+    console.log("📊 Fetching enquiry counts...");
+
+    const branchId = req.headers["x-branch-id"];
+    let filter = {};
+    if (branchId) {
+      filter.$or = [
+        { branchId: branchId },
+        { branchId: { $exists: false } },
+        { branchId: null }
+      ];
+    }
+
+    const [
+      rawCount,
+      coldLeadCount,
+      warmLeadCount,
+      hotLeadCount,
+      contactedCount,
+      interestedCount,
+      notInterestedCount,
+      enrolledCount,
+      lostCount,
+    ] = await Promise.all([
+      Enquiry.countDocuments({ ...filter, status: "raw" }),
+      Enquiry.countDocuments({ ...filter, status: "cold_lead" }),
+      Enquiry.countDocuments({ ...filter, status: "warm_lead" }),
+      Enquiry.countDocuments({ ...filter, status: "hot_lead" }),
+      Enquiry.countDocuments({ ...filter, status: "contacted" }),
+      Enquiry.countDocuments({ ...filter, status: "interested" }),
+      Enquiry.countDocuments({ ...filter, status: "not_interested" }),
+      Enquiry.countDocuments({ ...filter, status: "enrolled" }),
+      Enquiry.countDocuments({ ...filter, status: "lost" }),
+    ]);
+
+    const countsData = {
+      raw: rawCount,
+      cold_lead: coldLeadCount,
+      warm_lead: warmLeadCount,
+      hot_lead: hotLeadCount,
+      contacted: contactedCount,
+      interested: interestedCount,
+      not_interested: notInterestedCount,
+      enrolled: enrolledCount,
+      lost: lostCount,
+    };
+
+    console.log("📊 Counts result:", countsData);
+
+    res.json({
+      success: true,
+      data: countsData,
+    });
+  } catch (err) {
+    console.error("❌ Counts error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Get enquiries by status (for different tabs)
 app.get("/api/enquiries/:status", verifyAuth, async (req, res) => {
   try {
     const { status } = req.params;
-    const { page = 1, limit = 50, search, source, interest } = req.query;
+    const { page = 1, limit = 50, search, source, interest, assignedTo, from, to } = req.query;
 
     console.log(`📊 Fetching enquiries with status: ${status}`);
 
@@ -5879,6 +6076,32 @@ app.get("/api/enquiries/:status", verifyAuth, async (req, res) => {
 
     if (source) filter.source = source;
     if (interest) filter.interest = interest;
+    if (assignedTo) filter.assignedTo = assignedTo;
+
+    // Date range filtering
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = new Date(from);
+      if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+    }
+
+    // Branch filter
+    const branchId = req.headers["x-branch-id"];
+    if (branchId) {
+      const branchFilter = {
+        $or: [
+          { branchId: branchId },
+          { branchId: { $exists: false } },
+          { branchId: null }
+        ]
+      };
+
+      if (filter.$or) {
+        filter = { $and: [filter, branchFilter] };
+      } else {
+        filter = { ...filter, ...branchFilter };
+      }
+    }
 
     const skip = (page - 1) * limit;
 
@@ -5988,6 +6211,7 @@ app.post("/api/enquiries", verifyAuth, async (req, res) => {
       address: address ? address.trim() : undefined,
       location: location ? location.trim() : undefined,
       notes: notes ? notes.trim() : undefined,
+      branchId: req.headers["x-branch-id"],
       createdBy: req.user.id,
     });
 
@@ -6185,6 +6409,56 @@ app.post("/api/enquiries/:id/contact", verifyAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("Add contact attempt error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Add note with timestamp
+app.post("/api/enquiries/:id/note", verifyAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+
+    if (!note || !note.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Note cannot be empty",
+      });
+    }
+
+    const enquiry = await Enquiry.findById(id);
+
+    if (!enquiry) {
+      return res.status(404).json({
+        success: false,
+        message: "Enquiry not found",
+      });
+    }
+
+    // Initialize notesHistory if it doesn't exist
+    if (!enquiry.notesHistory) {
+      enquiry.notesHistory = [];
+    }
+
+    // Add note with timestamp
+    enquiry.notesHistory.push({
+      note: note.trim(),
+      addedBy: req.user.id,
+      addedAt: new Date(),
+    });
+
+    // Also update the legacy notes field for backward compatibility
+    enquiry.notes = note.trim();
+
+    await enquiry.save();
+
+    res.json({
+      success: true,
+      message: "Note added successfully",
+      data: enquiry,
+    });
+  } catch (err) {
+    console.error("Add note error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -6394,6 +6668,7 @@ app.post(
             address: item.address,
             location: item.location,
             status: "raw",
+            branchId: req.headers["x-branch-id"],
             createdBy: req.user.id,
           });
 
@@ -6502,57 +6777,6 @@ app.get("/api/enquiries/bulk-upload/health", verifyAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Bulk upload health check error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Get count for each status - for tab badges
-app.get("/api/enquiries/counts", verifyAuth, async (req, res) => {
-  try {
-    console.log("📊 Fetching enquiry counts...");
-
-    const [
-      rawCount,
-      coldLeadCount,
-      warmLeadCount,
-      hotLeadCount,
-      contactedCount,
-      interestedCount,
-      notInterestedCount,
-      enrolledCount,
-      lostCount,
-    ] = await Promise.all([
-      Enquiry.countDocuments({ status: "raw" }),
-      Enquiry.countDocuments({ status: "cold_lead" }),
-      Enquiry.countDocuments({ status: "warm_lead" }),
-      Enquiry.countDocuments({ status: "hot_lead" }),
-      Enquiry.countDocuments({ status: "contacted" }),
-      Enquiry.countDocuments({ status: "interested" }),
-      Enquiry.countDocuments({ status: "not_interested" }),
-      Enquiry.countDocuments({ status: "enrolled" }),
-      Enquiry.countDocuments({ status: "lost" }),
-    ]);
-
-    const countsData = {
-      raw: rawCount,
-      cold_lead: coldLeadCount,
-      warm_lead: warmLeadCount,
-      hot_lead: hotLeadCount,
-      contacted: contactedCount,
-      interested: interestedCount,
-      not_interested: notInterestedCount,
-      enrolled: enrolledCount,
-      lost: lostCount,
-    };
-
-    console.log("📊 Counts result:", countsData);
-
-    res.json({
-      success: true,
-      data: countsData,
-    });
-  } catch (err) {
-    console.error("❌ Counts error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
