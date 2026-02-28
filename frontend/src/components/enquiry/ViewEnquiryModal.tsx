@@ -1,6 +1,13 @@
 "use client";
 
-import { X } from "lucide-react";
+
+import { X, Star, Calendar, User } from "lucide-react";
+
+interface NoteHistory {
+  note: string;
+  addedBy?: { _id: string; fname?: string; lname?: string; name?: string };
+  addedAt: Date;
+}
 
 interface Enquiry {
   _id: string;
@@ -16,6 +23,7 @@ interface Enquiry {
   address?: string;
   status: string;
   createdAt: string;
+  notesHistory?: NoteHistory[];
 }
 
 interface ViewEnquiryModalProps {
@@ -149,8 +157,37 @@ export default function ViewEnquiryModal({
                 {new Date(enquiry.createdAt).toLocaleDateString()}
               </div>
             </div>
+
+            {/* Notes History */}
+              {enquiry.notesHistory && enquiry.notesHistory.length > 0 && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Notes History</h4>
+                  <div className="space-y-3 max-h-64 overflow-y-auto">
+                    {/* Display notes in reverse chronological order (newest first) */}
+                    {[...enquiry.notesHistory].reverse().map((noteItem, index) => (
+                      <div key={index} className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs text-gray-600 mb-1 flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(noteItem.addedAt).toLocaleString()}
+                        </div>
+                        {/* {noteItem.addedBy && (
+                          <div className="text-xs text-gray-600 mb-2 flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            {noteItem.addedBy.name || `${noteItem.addedBy.fname || ''} ${noteItem.addedBy.lname || ''}`.trim() || 'Unknown'}
+                          </div>
+                        )} */}
+                        <p className="text-sm text-gray-700 break-words">{noteItem.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+
           </div>
         </div>
+
+          
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
