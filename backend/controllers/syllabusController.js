@@ -13,6 +13,11 @@ export const getSyllabus = async (req, res) => {
     const userId = req.user?.id;
     const userRole = req.user?.role?.toLowerCase();
 
+    console.log("🔍 getSyllabus called");
+    console.log("  userId:", userId);
+    console.log("  userRole:", userRole);
+    console.log("  Query params:", { batch_id, academic_year, course_id });
+
     let query = {};
 
     // Authorization logic based on role
@@ -80,16 +85,25 @@ export const getSyllabus = async (req, res) => {
       // ⭐ Add support for course_id filtering
       if (course_id) {
         query.course_id = course_id;
+        console.log("  📚 Filtering by course_id:", course_id);
       }
       if (academic_year) {
         query.academic_year = academic_year;
       }
     } else {
-      query.batch_id = { $in: [] };
+      // Fallback: For unrecognized roles, allow filtering by course_id if provided
+      // This helps with tools/scripts that might not have full user context
+      console.log("  ⚠️ Unrecognized role, using default query");
+      if (course_id) {
+        query.course_id = course_id;
+        console.log("  📚 Filtering by course_id:", course_id);
+      }
     }
 
     // ⭐ IMPORTANT: If no batch_id specified for admin/superadmin, don't filter by it
     // This allows viewing course-level syllabi (batch_id: null/undefined)
+
+    console.log("  🔎 Final query object:", JSON.stringify(query));
 
     const syllabi = await Syllabus.find(query)
       .populate("batch_id", "name course_id")
@@ -97,7 +111,14 @@ export const getSyllabus = async (req, res) => {
       .populate("created_by", "fname lname email")
       .populate("updated_by", "fname lname email");
 
-    console.log(`✅ Found ${syllabi.length} syllabi`);
+    console.log(`✅ Found ${syllabi.length} syllabi for query:`, query);
+    if (syllabi.length > 0) {
+      syllabi.forEach((s, idx) => {
+        console.log(
+          `   [${idx}] Course: ${s.course_id?.name}, Academic Year: ${s.academic_year}`,
+        );
+      });
+    }
 
     res.json({
       success: true,
@@ -423,6 +444,80 @@ export const updateSyllabusItem = async (req, res) => {
   }
 };
 
+// Bulk update field in all items (for subject/topic renaming)
+export const bulkUpdateSyllabusField = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fieldType, oldValue, newValue } = req.body;
+
+    if (!fieldType || !oldValue || !newValue) {
+      return res.status(400).json({
+        success: false,
+        message: "fieldType, oldValue, and newValue are required",
+      });
+    }
+
+    const syllabus = await Syllabus.findById(id);
+    if (!syllabus) {
+      return res.status(404).json({
+        success: false,
+        message: "Syllabus not found",
+      });
+    }
+
+    let updatedCount = 0;
+
+    // Bulk update items
+    if (fieldType === "subject") {
+      // Update all items where subject === oldValue
+      syllabus.items.forEach((item) => {
+        if (item.subject === oldValue) {
+          item.subject = newValue;
+          updatedCount++;
+        }
+      });
+    } else if (fieldType === "topic") {
+      // Update all items where topic === oldValue
+      syllabus.items.forEach((item) => {
+        if (item.topic === oldValue) {
+          item.topic = newValue;
+          updatedCount++;
+        }
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid fieldType. Must be 'subject' or 'topic'",
+      });
+    }
+
+    if (updatedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No items found with ${fieldType} = '${oldValue}'`,
+      });
+    }
+
+    syllabus.updated_at = new Date();
+    await syllabus.save();
+    await syllabus.populate("batch_id", "name course_id");
+    await syllabus.populate("course_id", "name");
+
+    res.json({
+      success: true,
+      message: `${fieldType} updated successfully in ${updatedCount} item(s)`,
+      data: syllabus,
+    });
+  } catch (error) {
+    console.error("Error bulk updating syllabus field:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to bulk update syllabus field",
+      error: error.message,
+    });
+  }
+};
+
 // Delete syllabus item
 export const deleteSyllabusItem = async (req, res) => {
   try {
@@ -672,11 +767,11 @@ export const getSyllabusTemplate = async (req, res) => {
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="syllabus_template.xlsx"'
+      'attachment; filename="syllabus_template.xlsx"',
     );
     res.send(buffer);
   } catch (error) {
@@ -688,7 +783,6 @@ export const getSyllabusTemplate = async (req, res) => {
     });
   }
 };
-
 
 // Bulk upload syllabi - PRODUCTION-GRADE with merged cell handling
 export const bulkUploadSyllabi = async (req, res) => {

@@ -98,17 +98,21 @@ export default function AddBatchModal({ open, onClose, onSave, initialData }: Ad
   const fetchSyllabi = async (courseId: string) => {
     setLoadingSyllabi(true);
     try {
+      console.log(`🔍 Fetching syllabi for course: ${courseId}`);
       const response = await fetch(`${API_BASE}/api/syllabus?course_id=${courseId}`, {
         credentials: 'include',
       });
       const data = await response.json();
-      if (data.success && data.data) {
+      console.log(`📚 Syllabi response:`, data);
+      if (data.success && Array.isArray(data.data)) {
+        console.log(`✅ Found ${data.data.length} syllabi`);
         setSyllabi(data.data);
       } else {
+        console.warn(`⚠️ No syllabi found for course ${courseId}`);
         setSyllabi([]);
       }
     } catch (error) {
-      console.error("Failed to fetch syllabi:", error);
+      console.error("❌ Failed to fetch syllabi:", error);
       setSyllabi([]);
     }
     setLoadingSyllabi(false);
@@ -233,7 +237,13 @@ export default function AddBatchModal({ open, onClose, onSave, initialData }: Ad
           {/* Syllabus */}
           <div>
             <label className="block text-sm font-medium text-[#101828] mb-2">
-              Syllabus {form.course_id && !loadingSyllabi && syllabi.length === 0 && (
+              Syllabus 
+              {form.course_id && (
+                <span className="text-xs text-gray-500 font-normal ml-2">
+                  (for {courses.find(c => c._id === form.course_id)?.name})
+                </span>
+              )}
+              {form.course_id && !loadingSyllabi && syllabi.length === 0 && (
                 <span className="text-xs text-amber-600 ml-2">(No syllabus created for this course yet)</span>
               )}
             </label>
@@ -254,13 +264,15 @@ export default function AddBatchModal({ open, onClose, onSave, initialData }: Ad
               </option>
               {syllabi.map((syllabus) => (
                 <option key={syllabus._id} value={syllabus._id}>
-                  {syllabus.batch_id?.name || "No Batch"} - {syllabus.academic_year}
+                  {syllabus.batch_id?.name || `Academic Year ${syllabus.academic_year}`} - {syllabus.academic_year}
                 </option>
               ))}
             </select>
             <div className="text-xs text-[#6B7280] mt-1">
               {form.course_id 
-                ? "You can assign or create a syllabus later from the Syllabus page" 
+                ? syllabi.length === 0
+                  ? "Create a syllabus from the Syllabus page first"
+                  : "Select a syllabus or leave empty to create later"
                 : "Select a course to see available syllabi"}
             </div>
           </div>

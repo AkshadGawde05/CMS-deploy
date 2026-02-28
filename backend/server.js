@@ -51,7 +51,10 @@ const corsAllowList = (
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 if (!corsAllowList.length) {
-  corsAllowList.push("http://localhost:3000", "https://cms-deploy-chi.vercel.app");
+  corsAllowList.push(
+    "http://localhost:3000",
+    "https://cms-deploy-chi.vercel.app",
+  );
 }
 const corsOptions = {
   origin(origin, callback) {
@@ -345,7 +348,9 @@ app.put("/api/fee-plans/:id", verifyAuth, async (req, res) => {
     // Verify user has access to this fee plan's branch
     const existingPlan = await FeePlan.findById(req.params.id);
     if (!existingPlan) {
-      return res.status(404).json({ success: false, message: "Plan not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Plan not found" });
     }
 
     const isSuperAdmin = req.user?.isSuperAdmin;
@@ -470,42 +475,47 @@ app.get("/api/expenses", verifyAuth, async (req, res) => {
 });
 
 // Create expense (supports multipart for receipt)
-app.post("/api/expenses", verifyAuth, uploadReceipt.single("receipt"), async (req, res) => {
-  try {
-    const body = req.body;
+app.post(
+  "/api/expenses",
+  verifyAuth,
+  uploadReceipt.single("receipt"),
+  async (req, res) => {
+    try {
+      const body = req.body;
 
-    // Get branchId from context
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
-    if (!branchId) {
-      return res.status(400).json({
-        success: false,
-        message: "Branch ID is required",
-      });
-    }
+      // Get branchId from context
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+      if (!branchId) {
+        return res.status(400).json({
+          success: false,
+          message: "Branch ID is required",
+        });
+      }
 
-    const payload = {
-      branchId,
-      category: body.category,
-      title: body.title,
-      description: body.description,
-      amount: Number(body.amount),
-      date: body.date ? new Date(body.date) : new Date(),
-      payment_method: body.payment_method,
-      vendor_name: body.vendor_name,
-      invoice_number: body.invoice_number,
-      status: body.status || "pending",
-    };
-    if (req.file) {
-      const rel = `/uploads/receipts/${req.file.filename}`;
-      payload.receipt_url = rel;
+      const payload = {
+        branchId,
+        category: body.category,
+        title: body.title,
+        description: body.description,
+        amount: Number(body.amount),
+        date: body.date ? new Date(body.date) : new Date(),
+        payment_method: body.payment_method,
+        vendor_name: body.vendor_name,
+        invoice_number: body.invoice_number,
+        status: body.status || "pending",
+      };
+      if (req.file) {
+        const rel = `/uploads/receipts/${req.file.filename}`;
+        payload.receipt_url = rel;
+      }
+      const expense = new Expense(payload);
+      await expense.save();
+      res.status(201).json({ success: true, expense });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-    const expense = new Expense(payload);
-    await expense.save();
-    res.status(201).json({ success: true, expense });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Update expense (supports multipart for receipt)
 app.put(
@@ -706,21 +716,21 @@ app.get("/api/batches", verifyAuth, async (req, res) => {
     const query = isArchivedReq
       ? { $or: [{ isArchived: true }, { archived: true }] }
       : {
-        $and: [
-          {
-            $or: [
-              { isArchived: { $ne: true } },
-              { isArchived: { $exists: false } },
-            ],
-          },
-          {
-            $or: [
-              { archived: { $ne: true } },
-              { archived: { $exists: false } },
-            ],
-          },
-        ],
-      };
+          $and: [
+            {
+              $or: [
+                { isArchived: { $ne: true } },
+                { isArchived: { $exists: false } },
+              ],
+            },
+            {
+              $or: [
+                { archived: { $ne: true } },
+                { archived: { $exists: false } },
+              ],
+            },
+          ],
+        };
 
     // Add branch filter
     const isSuperAdmin = req.user?.isSuperAdmin;
@@ -910,7 +920,8 @@ app.post("/api/batches", verifyAuth, async (req, res) => {
     // Replace schedule string with structured schedule if desired (or keep as string to match schema)
     // Current schema stores 'schedule' as string, so we stringify again to ensure consistency
     if (schedule) {
-      batchData.schedule = typeof schedule === "string" ? schedule : JSON.stringify(schedule);
+      batchData.schedule =
+        typeof schedule === "string" ? schedule : JSON.stringify(schedule);
     }
 
     // Persist
@@ -1022,21 +1033,21 @@ app.get("/api/courses", async (req, res) => {
     const query = isArchivedReq
       ? { $or: [{ isArchived: true }, { archived: true }] }
       : {
-        $and: [
-          {
-            $or: [
-              { isArchived: { $ne: true } },
-              { isArchived: { $exists: false } },
-            ],
-          },
-          {
-            $or: [
-              { archived: { $ne: true } },
-              { archived: { $exists: false } },
-            ],
-          },
-        ],
-      };
+          $and: [
+            {
+              $or: [
+                { isArchived: { $ne: true } },
+                { isArchived: { $exists: false } },
+              ],
+            },
+            {
+              $or: [
+                { archived: { $ne: true } },
+                { archived: { $exists: false } },
+              ],
+            },
+          ],
+        };
 
     // Add branch filter
     const isSuperAdmin = req.user?.isSuperAdmin;
@@ -1088,26 +1099,39 @@ app.delete("/api/courses/:id", async (req, res) => {
 app.put("/api/courses/:id", async (req, res) => {
   try {
     let { course_start, course_end, ...rest } = req.body;
-    course_start = new Date(course_start);
-    course_end = new Date(course_end);
+    let updateData = { ...rest };
     let duration_months = 0;
-    if (
-      course_start &&
-      course_end &&
-      !isNaN(course_start) &&
-      !isNaN(course_end)
-    ) {
-      duration_months =
-        (course_end.getFullYear() - course_start.getFullYear()) * 12 +
-        (course_end.getMonth() - course_start.getMonth());
-      if (duration_months < 0) duration_months = 0;
+
+    // Safely parse and validate dates
+    if (course_start && course_start.trim?.()) {
+      const parsedStart = new Date(course_start);
+      if (!isNaN(parsedStart)) {
+        updateData.course_start = parsedStart;
+      }
     }
-    const updated = await Course.findByIdAndUpdate(
-      req.params.id,
-      { ...rest, course_start, course_end, duration_months },
-      { new: true },
-    );
-    res.json(updated);
+
+    if (course_end && course_end.trim?.()) {
+      const parsedEnd = new Date(course_end);
+      if (!isNaN(parsedEnd)) {
+        updateData.course_end = parsedEnd;
+      }
+    }
+
+    // Calculate duration_months only if both dates are valid
+    if (updateData.course_start && updateData.course_end) {
+      duration_months =
+        (updateData.course_end.getFullYear() -
+          updateData.course_start.getFullYear()) *
+          12 +
+        (updateData.course_end.getMonth() - updateData.course_start.getMonth());
+      if (duration_months < 0) duration_months = 0;
+      updateData.duration_months = duration_months;
+    }
+
+    const updated = await Course.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+    });
+    res.json({ success: true, data: updated });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
@@ -1147,25 +1171,40 @@ app.post("/api/courses", async (req, res) => {
     const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
 
     let { course_start, course_end, ...rest } = req.body;
-    course_start = new Date(course_start);
-    course_end = new Date(course_end);
-    // Calculate duration in months
+    let updateData = { ...rest };
     let duration_months = 0;
+
+    // Safely parse and validate dates
+    if (course_start && course_start.trim?.()) {
+      const parsedStart = new Date(course_start);
+      if (!isNaN(parsedStart)) {
+        updateData.course_start = parsedStart;
+      }
+    }
+
+    if (course_end && course_end.trim?.()) {
+      const parsedEnd = new Date(course_end);
+      if (!isNaN(parsedEnd)) {
+        updateData.course_end = parsedEnd;
+      }
+    }
+
+    // Calculate duration in months
     if (
-      course_start &&
-      course_end &&
-      !isNaN(course_start) &&
-      !isNaN(course_end)
+      updateData.course_start &&
+      updateData.course_end &&
+      !isNaN(updateData.course_start) &&
+      !isNaN(updateData.course_end)
     ) {
       duration_months =
-        (course_end.getFullYear() - course_start.getFullYear()) * 12 +
-        (course_end.getMonth() - course_start.getMonth());
+        (updateData.course_end.getFullYear() -
+          updateData.course_start.getFullYear()) *
+          12 +
+        (updateData.course_end.getMonth() - updateData.course_start.getMonth());
       if (duration_months < 0) duration_months = 0;
     }
     const course = new Course({
-      ...rest,
-      course_start,
-      course_end,
+      ...updateData,
       duration_months,
       branchId, // Auto-assign branch
     });
@@ -1317,7 +1356,8 @@ app.post("/api/students", async (req, res) => {
       // Remove this after verification to avoid leaking sensitive info.
       try {
         console.log(
-          `🔐 [DEBUG] Generated temp password for new student (${email || phone || "no-contact"
+          `🔐 [DEBUG] Generated temp password for new student (${
+            email || phone || "no-contact"
           }):`,
           tempPassword,
         );
@@ -1423,7 +1463,8 @@ app.post("/api/students", async (req, res) => {
             });
             await installment.save();
             console.log(
-              `✅ Installment ${i + 1
+              `✅ Installment ${
+                i + 1
               } created - Due: ${dueDate.toDateString()}, Amount: ₹${installmentAmount}`,
             );
           }
@@ -1546,9 +1587,9 @@ app.get("/api/students", verifyAuth, async (req, res) => {
     const [batchesDocs, feePlansDocs, coursesDocs] = await Promise.all([
       batchIds.length
         ? Batches.find({ _id: { $in: batchIds } }).populate(
-          "course_id",
-          "name course_fee gst_percent",
-        )
+            "course_id",
+            "name course_fee gst_percent",
+          )
         : [],
       batchIds.length ? FeePlan.find({ batch_id: { $in: batchIds } }) : [],
       courseIds.length ? Course.find({ _id: { $in: courseIds } }) : [],
@@ -1921,7 +1962,7 @@ app.post(
             dob:
               parseExcelDate(
                 row["Date of Birth (DD/MM/YYYY)"] ||
-                row["Date of Birth (YYYY-MM-DD)"],
+                  row["Date of Birth (YYYY-MM-DD)"],
               ) || undefined,
             gender: gender.toLowerCase(),
             fee_status: "pending",
@@ -3343,10 +3384,10 @@ app.get("/api/lectures", async (req, res) => {
             duration_minutes:
               lecture.lecture_end && lecture.lecture_start
                 ? Math.round(
-                  (new Date(lecture.lecture_end) -
-                    new Date(lecture.lecture_start)) /
-                  (1000 * 60),
-                )
+                    (new Date(lecture.lecture_end) -
+                      new Date(lecture.lecture_start)) /
+                      (1000 * 60),
+                  )
                 : 0,
           },
         };
@@ -3690,10 +3731,10 @@ app.get("/api/lectures/archived", async (req, res) => {
             duration_minutes:
               lecture.lecture_end && lecture.lecture_start
                 ? Math.round(
-                  (new Date(lecture.lecture_end) -
-                    new Date(lecture.lecture_start)) /
-                  (1000 * 60),
-                )
+                    (new Date(lecture.lecture_end) -
+                      new Date(lecture.lecture_start)) /
+                      (1000 * 60),
+                  )
                 : 0,
           },
         };
@@ -3801,10 +3842,10 @@ app.get("/api/lectures/:id", async (req, res) => {
         duration_minutes:
           lecture.lecture_end && lecture.lecture_start
             ? Math.round(
-              (new Date(lecture.lecture_end) -
-                new Date(lecture.lecture_start)) /
-              (1000 * 60),
-            )
+                (new Date(lecture.lecture_end) -
+                  new Date(lecture.lecture_start)) /
+                  (1000 * 60),
+              )
             : 0,
       },
     };
@@ -5841,7 +5882,10 @@ app.get("/api/enquiries", verifyAuth, async (req, res) => {
     if (from || to) {
       filter.createdAt = {};
       if (from) filter.createdAt.$gte = new Date(from);
-      if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+      if (to)
+        filter.createdAt.$lte = new Date(
+          new Date(to).setHours(23, 59, 59, 999),
+        );
     }
 
     // Branch filter
@@ -5851,8 +5895,8 @@ app.get("/api/enquiries", verifyAuth, async (req, res) => {
         $or: [
           { branchId: branchId },
           { branchId: { $exists: false } },
-          { branchId: null }
-        ]
+          { branchId: null },
+        ],
       };
 
       if (filter.$or) {
@@ -5893,28 +5937,30 @@ app.get("/api/enquiries", verifyAuth, async (req, res) => {
 app.get("/api/enquiries/meta", verifyAuth, async (req, res) => {
   try {
     const branchId = req.headers["x-branch-id"];
-    const filter = branchId ? {
-      $or: [
-        { branchId: branchId },
-        { branchId: null },
-        { branchId: { $exists: false } }
-      ]
-    } : {};
+    const filter = branchId
+      ? {
+          $or: [
+            { branchId: branchId },
+            { branchId: null },
+            { branchId: { $exists: false } },
+          ],
+        }
+      : {};
 
     const [sources, interests, users] = await Promise.all([
       Enquiry.distinct("source", filter),
       Enquiry.distinct("interest", filter),
       User.find({
         status: true,
-        role: { $in: ["Admin", "SuperAdmin", "Teacher"] }
-      }).select("name fname lname email role")
+        role: { $in: ["Admin", "SuperAdmin", "Teacher"] },
+      }).select("name fname lname email role"),
     ]);
 
     // Format users for selection
-    const formattedUsers = users.map(u => ({
+    const formattedUsers = users.map((u) => ({
       _id: u._id,
       name: u.name || `${u.fname} ${u.lname}`,
-      role: u.role
+      role: u.role,
     }));
 
     res.json({
@@ -5922,8 +5968,8 @@ app.get("/api/enquiries/meta", verifyAuth, async (req, res) => {
       data: {
         sources: sources.filter(Boolean).sort(),
         interests: interests.filter(Boolean).sort(),
-        users: formattedUsers
-      }
+        users: formattedUsers,
+      },
     });
   } catch (err) {
     console.error("Enquiry meta error:", err);
@@ -5977,11 +6023,11 @@ app.get("/api/enquiries/template", async (req, res) => {
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="enquiry_template.xlsx"'
+      'attachment; filename="enquiry_template.xlsx"',
     );
 
     res.send(buffer);
@@ -6006,7 +6052,7 @@ app.get("/api/enquiries/counts", verifyAuth, async (req, res) => {
       filter.$or = [
         { branchId: branchId },
         { branchId: { $exists: false } },
-        { branchId: null }
+        { branchId: null },
       ];
     }
 
@@ -6060,7 +6106,16 @@ app.get("/api/enquiries/counts", verifyAuth, async (req, res) => {
 app.get("/api/enquiries/:status", verifyAuth, async (req, res) => {
   try {
     const { status } = req.params;
-    const { page = 1, limit = 50, search, source, interest, assignedTo, from, to } = req.query;
+    const {
+      page = 1,
+      limit = 50,
+      search,
+      source,
+      interest,
+      assignedTo,
+      from,
+      to,
+    } = req.query;
 
     console.log(`📊 Fetching enquiries with status: ${status}`);
 
@@ -6082,7 +6137,10 @@ app.get("/api/enquiries/:status", verifyAuth, async (req, res) => {
     if (from || to) {
       filter.createdAt = {};
       if (from) filter.createdAt.$gte = new Date(from);
-      if (to) filter.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+      if (to)
+        filter.createdAt.$lte = new Date(
+          new Date(to).setHours(23, 59, 59, 999),
+        );
     }
 
     // Branch filter
@@ -6092,8 +6150,8 @@ app.get("/api/enquiries/:status", verifyAuth, async (req, res) => {
         $or: [
           { branchId: branchId },
           { branchId: { $exists: false } },
-          { branchId: null }
-        ]
+          { branchId: null },
+        ],
       };
 
       if (filter.$or) {
@@ -6482,7 +6540,7 @@ app.post(
       }
 
       console.log(
-        `📄 File received: ${req.file.originalname} (${req.file.size} bytes)`
+        `📄 File received: ${req.file.originalname} (${req.file.size} bytes)`,
       );
 
       const workbook = new ExcelJS.Workbook();
@@ -6542,7 +6600,7 @@ app.post(
 
         if (!fn || !ln || !phoneStr || !src || !intr) {
           rowErrors.push(
-            "Missing required fields: firstName, lastName, phone, source, or interest"
+            "Missing required fields: firstName, lastName, phone, source, or interest",
           );
         }
 
@@ -6582,7 +6640,7 @@ app.post(
       });
 
       console.log(
-        `📊 Parsed ${data.length} valid-looking rows, ${failed.length} immediate failures`
+        `📊 Parsed ${data.length} valid-looking rows, ${failed.length} immediate failures`,
       );
 
       if (data.length === 0) {
@@ -6603,7 +6661,7 @@ app.post(
           internalDuplicates.push({
             ...item,
             error: `Duplicate phone number within file (also found at row ${phoneMap.get(
-              item.phone
+              item.phone,
             )})`,
           });
         } else {
@@ -6613,7 +6671,7 @@ app.post(
 
       if (internalDuplicates.length > 0) {
         console.log(
-          `⚠️ Found ${internalDuplicates.length} internal duplicate rows`
+          `⚠️ Found ${internalDuplicates.length} internal duplicate rows`,
         );
         failed.push(...internalDuplicates);
       }
@@ -6649,7 +6707,7 @@ app.post(
       });
 
       console.log(
-        `📌 After duplicate checks: to-insert=${finalData.length}, failed=${failed.length}`
+        `📌 After duplicate checks: to-insert=${finalData.length}, failed=${failed.length}`,
       );
 
       const successful = [];
@@ -6677,7 +6735,7 @@ app.post(
         } catch (err) {
           console.error(
             `❌ Failed to save enquiry at row ${item.rowNumber}:`,
-            err.message
+            err.message,
           );
           failed.push({
             ...item,
@@ -6687,7 +6745,7 @@ app.post(
       }
 
       console.log(
-        `✅ Bulk upload complete. Success=${successful.length}, Failed=${failed.length}`
+        `✅ Bulk upload complete. Success=${successful.length}, Failed=${failed.length}`,
       );
 
       return res.json({
@@ -6707,9 +6765,8 @@ app.post(
         results: { success: [], failed: [], total: 0 },
       });
     }
-  }
+  },
 );
-
 
 // Get enquiry analytics
 app.get("/api/enquiries/analytics", verifyAuth, async (req, res) => {

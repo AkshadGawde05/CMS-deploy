@@ -6,15 +6,14 @@ import {
   updateSyllabus,
   addSyllabusItem,
   updateSyllabusItem,
+  bulkUpdateSyllabusField,
   deleteSyllabusItem,
   deleteSyllabus,
   getSyllabusTemplate,
   bulkUploadSyllabi,
 } from "../controllers/syllabusController.js";
 import { verifyAuth, verifyRole } from "../middlewares/jwtAuth.js";
-import {
-  verifyTeacherBatchAccess,
-} from "../middlewares/dataLevelAuth.js";
+import { verifyTeacherBatchAccess } from "../middlewares/dataLevelAuth.js";
 import { upload } from "../middleware/upload.js";
 
 const router = express.Router();
@@ -23,10 +22,19 @@ const router = express.Router();
 router.use(verifyAuth);
 
 // Get template (requires admin/superadmin) - MUST BE BEFORE /:id
-router.get("/template", verifyRole(["Admin", "SuperAdmin"]), getSyllabusTemplate);
+router.get(
+  "/template",
+  verifyRole(["Admin", "SuperAdmin"]),
+  getSyllabusTemplate,
+);
 
 // Bulk upload syllabi (requires admin/superadmin)
-router.post("/bulk-upload", verifyRole(["Admin", "SuperAdmin"]), upload.single("file"), bulkUploadSyllabi);
+router.post(
+  "/bulk-upload",
+  verifyRole(["Admin", "SuperAdmin"]),
+  upload.single("file"),
+  bulkUploadSyllabi,
+);
 
 // Get syllabus (with optional filters for batch_id and academic_year, data-level filtered by controller)
 router.get("/", getSyllabus);
@@ -47,14 +55,21 @@ router.post("/:id/items", verifyRole(["Admin", "SuperAdmin"]), addSyllabusItem);
 router.put(
   "/:id/items/:itemId",
   verifyRole(["Admin", "SuperAdmin"]),
-  updateSyllabusItem
+  updateSyllabusItem,
+);
+
+// Bulk update field in syllabus items (for subject/topic renaming) (requires admin/superadmin)
+router.put(
+  "/:id/bulk-update-field",
+  verifyRole(["Admin", "SuperAdmin"]),
+  bulkUpdateSyllabusField,
 );
 
 // Delete specific item from syllabus (requires admin/superadmin)
 router.delete(
   "/:id/items/:itemId",
   verifyRole(["Admin", "SuperAdmin"]),
-  deleteSyllabusItem
+  deleteSyllabusItem,
 );
 
 // Delete entire syllabus (requires admin/superadmin)

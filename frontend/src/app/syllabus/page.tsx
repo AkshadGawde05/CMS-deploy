@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import Navbar from '@/components/layout/Navbar';
 import Sidebar from '@/components/layout/Sidebar';
@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Upload,
   X,
+  Edit,
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -60,6 +61,8 @@ interface GroupedData {
       [batchId: string]: {
         batchName: string;
         syllabusId: string;
+        actualBatchId: string | null;
+        academicYear: string;
         subjects: {
           [subject: string]: {
             topics: {
@@ -88,6 +91,26 @@ export default function SyllabusPage() {
 
   const [showCreateSyllabus, setShowCreateSyllabus] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
+
+  const [showEditBatchModal, setShowEditBatchModal] = useState(false);
+  const [editingBatch, setEditingBatch] = useState<{ id: string; name: string } | null>(null);
+  const [editBatchName, setEditBatchName] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  const [showEditCourseModal, setShowEditCourseModal] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<{ id: string; name: string } | null>(null);
+  const [editCourseName, setEditCourseName] = useState('');
+  const editCourseInputRef = useRef<HTMLInputElement>(null);
+
+  const [showEditAcademicYearModal, setShowEditAcademicYearModal] = useState(false);
+  const [editingAcademicYear, setEditingAcademicYear] = useState<{ syllabusId: string; academicYear: string } | null>(null);
+  const [editAcademicYearValue, setEditAcademicYearValue] = useState('');
+  const editAcademicYearInputRef = useRef<HTMLInputElement>(null);
+
+  const [showEditSubjectModal, setShowEditSubjectModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<{ syllabusId: string; itemId: string; name: string; type: 'subject' | 'topic' | 'subtopic' } | null>(null);
+  const [editItemName, setEditItemName] = useState('');
+  const editItemInputRef = useRef<HTMLInputElement>(null);
 
   const [addingItem, setAddingItem] = useState<{
     syllabusId: string;
@@ -118,6 +141,106 @@ export default function SyllabusPage() {
     fetchCourses();
     fetchBatches();
   }, []);
+
+  // Handle edit modal keyboard shortcuts and auto-focus
+  useEffect(() => {
+    if (showEditBatchModal && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleEditBatch();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setShowEditBatchModal(false);
+          setEditingBatch(null);
+          setEditBatchName('');
+          setError(null);
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEditBatchModal]);
+
+  // Handle edit course modal keyboard shortcuts and auto-focus
+  useEffect(() => {
+    if (showEditCourseModal && editCourseInputRef.current) {
+      editCourseInputRef.current.focus();
+      editCourseInputRef.current.select();
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleEditCourse();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setShowEditCourseModal(false);
+          setEditingCourse(null);
+          setEditCourseName('');
+          setError(null);
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEditCourseModal]);
+
+  // Handle edit subject/topic/subtopic modal keyboard shortcuts and auto-focus
+  useEffect(() => {
+    if (showEditSubjectModal && editItemInputRef.current) {
+      editItemInputRef.current.focus();
+      editItemInputRef.current.select();
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleEditSyllabusItem();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setShowEditSubjectModal(false);
+          setEditingItem(null);
+          setEditItemName('');
+          setError(null);
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEditSubjectModal]);
+
+  // Handle edit academic year modal keyboard shortcuts and auto-focus
+  useEffect(() => {
+    if (showEditAcademicYearModal && editAcademicYearInputRef.current) {
+      editAcademicYearInputRef.current.focus();
+      editAcademicYearInputRef.current.select();
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleEditAcademicYear();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setShowEditAcademicYearModal(false);
+          setEditingAcademicYear(null);
+          setEditAcademicYearValue('');
+          setError(null);
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEditAcademicYearModal]);
 
   const fetchSyllabi = async () => {
     setLoading(true);
@@ -192,6 +315,8 @@ export default function SyllabusPage() {
         grouped[courseId].batches[batchId] = {
           batchName,
           syllabusId: record._id,
+          actualBatchId: record.batch_id?._id || null, // Store actual batch ID for editing
+          academicYear: record.academic_year, // Store academic year for editing
           subjects: {},
         };
       }
@@ -231,9 +356,9 @@ export default function SyllabusPage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          batchid: formData.batchid || undefined,
-          courseid: formData.courseid,
-          academicyear: formData.academicyear,
+          batch_id: formData.batchid || undefined,
+          course_id: formData.courseid,
+          academic_year: formData.academicyear,
           items: [],
         }),
       });
@@ -341,6 +466,141 @@ export default function SyllabusPage() {
         await fetchSyllabi();
       } else {
         setError(data.message || 'Failed to delete syllabus');
+      }
+    } catch (err: any) {
+      setError(`Error: ${err.message}`);
+    }
+  };
+
+  const handleEditBatch = async () => {
+    if (!editingBatch || !editBatchName.trim()) {
+      setError('Batch name cannot be empty');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/batches/${editingBatch.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: editBatchName }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setShowEditBatchModal(false);
+        setEditingBatch(null);
+        setEditBatchName('');
+        await fetchSyllabi();
+      } else {
+        setError(data.message || 'Failed to update batch name');
+      }
+    } catch (err: any) {
+      setError(`Error: ${err.message}`);
+    }
+  };
+
+  const handleEditCourse = async () => {
+    if (!editingCourse || !editCourseName.trim()) {
+      setError('Course name cannot be empty');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/courses/${editingCourse.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: editCourseName }),
+      });
+
+      const data = await response.json();
+      if (data.success || data._id) {
+        setShowEditCourseModal(false);
+        setEditingCourse(null);
+        setEditCourseName('');
+        setError(null);
+        await fetchSyllabi();
+      } else {
+        setError(data.message || 'Failed to update course name');
+      }
+    } catch (err: any) {
+      setError(`Error: ${err.message}`);
+    }
+  };
+
+  const handleEditSyllabusItem = async () => {
+    if (!editingItem || !editItemName.trim()) {
+      setError(`${editingItem?.type} name cannot be empty`);
+      return;
+    }
+
+    try {
+      let requestBody: any = {};
+      let url = `${API_BASE}/api/syllabus/${editingItem.syllabusId}`;
+
+      if (editingItem.type === 'subtopic') {
+        // For subtopic, use the direct item update endpoint
+        url += `/items/${editingItem.itemId}`;
+        requestBody = { subtopic: editItemName };
+      } else {
+        // For subject/topic, use bulk update endpoint
+        url += `/bulk-update-field`;
+        requestBody = {
+          fieldType: editingItem.type,
+          oldValue: editingItem.name,
+          newValue: editItemName,
+        };
+      }
+
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+      if (data.success || data._id) {
+        setShowEditSubjectModal(false);
+        setEditingItem(null);
+        setEditItemName('');
+        setError(null);
+        await fetchSyllabi();
+      } else {
+        setError(data.message || `Failed to update ${editingItem.type}`);
+      }
+    } catch (err: any) {
+      setError(`Error: ${err.message}`);
+    }
+  };
+
+  const handleEditAcademicYear = async () => {
+    if (!editingAcademicYear || !editAcademicYearValue.trim()) {
+      setError('Academic year cannot be empty');
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/syllabus/${editingAcademicYear.syllabusId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ academic_year: editAcademicYearValue }),
+        }
+      );
+
+      const data = await response.json();
+      if (data.success || data._id) {
+        setShowEditAcademicYearModal(false);
+        setEditingAcademicYear(null);
+        setEditAcademicYearValue('');
+        setError(null);
+        await fetchSyllabi();
+      } else {
+        setError(data.message || 'Failed to update academic year');
       }
     } catch (err: any) {
       setError(`Error: ${err.message}`);
@@ -556,6 +816,22 @@ export default function SyllabusPage() {
                         <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                           {Object.keys(courseData.batches).length}
                         </span>
+                        {/* EDIT BUTTON FOR COURSE NAME */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingCourse({
+                              id: courseId,
+                              name: courseData.courseName,
+                            });
+                            setEditCourseName(courseData.courseName);
+                            setShowEditCourseModal(true);
+                          }}
+                          className="ml-2 p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+                          title="Edit Course Name"
+                        >
+                          <Edit size={16} />
+                        </button>
                       </div>
 
                       {/* BATCH LEVEL */}
@@ -596,6 +872,22 @@ export default function SyllabusPage() {
                                     <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
                                       {Object.keys(batchData.subjects).length}
                                     </span>
+                                    {/* EDIT BUTTON FOR ACADEMIC YEAR */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingAcademicYear({
+                                          syllabusId: batchData.syllabusId,
+                                          academicYear: batchData.academicYear,
+                                        });
+                                        setEditAcademicYearValue(batchData.academicYear);
+                                        setShowEditAcademicYearModal(true);
+                                      }}
+                                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+                                      title="Edit Academic Year"
+                                    >
+                                      <Edit size={16} />
+                                    </button>
                                     {/* + BUTTON FOR BATCH → Add Subject */}
                                     <button
                                       onClick={(e) => {
@@ -617,6 +909,24 @@ export default function SyllabusPage() {
                                     >
                                       <Plus size={16} />
                                     </button>
+                                    {/* EDIT BUTTON FOR BATCH NAME */}
+                                    {batchData.actualBatchId && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingBatch({
+                                            id: batchData.actualBatchId!,
+                                            name: batchData.batchName,
+                                          });
+                                          setEditBatchName(batchData.batchName);
+                                          setShowEditBatchModal(true);
+                                        }}
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+                                        title="Edit Batch Name"
+                                      >
+                                        <Edit size={16} />
+                                      </button>
+                                    )}
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -672,6 +982,24 @@ export default function SyllabusPage() {
                                                 <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
                                                   {Object.keys(subjectData.topics).length}
                                                 </span>
+                                                {/* EDIT BUTTON FOR SUBJECT */}
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setEditingItem({
+                                                      syllabusId: batchData.syllabusId,
+                                                      itemId: `subject-${subject}`,
+                                                      name: subject,
+                                                      type: 'subject',
+                                                    });
+                                                    setEditItemName(subject);
+                                                    setShowEditSubjectModal(true);
+                                                  }}
+                                                  className="p-1 text-blue-600 hover:bg-blue-50 rounded transition"
+                                                  title="Edit Subject"
+                                                >
+                                                  <Edit size={14} />
+                                                </button>
                                                 {/* + BUTTON FOR SUBJECT → Add Topic */}
                                                 <button
                                                   onClick={(e) => {
@@ -733,29 +1061,49 @@ export default function SyllabusPage() {
                                                               {items.length}
                                                             </span>
                                                           </div>
-                                                          {/* + BUTTON FOR TOPIC → Add Subtopic */}
-                                                          <button
-                                                            onClick={(e) => {
-                                                              e.stopPropagation();
-                                                              setAddingItem({
-                                                                syllabusId: batchData.syllabusId,
-                                                                level: 'topic',
-                                                                subject,
-                                                                topic,
-                                                              });
-                                                              setNewItem({
-                                                                subject,
-                                                                topic,
-                                                                subtopic: '',
-                                                                description: '',
-                                                                duration_hours: 1,
-                                                              });
-                                                            }}
-                                                            className="p-1 text-green-600 hover:bg-green-50 rounded transition"
-                                                            title="Add Subtopic"
-                                                          >
-                                                            <Plus size={14} />
-                                                          </button>
+                                                          <div className="flex items-center gap-1">
+                                                            {/* EDIT BUTTON FOR TOPIC */}
+                                                            <button
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingItem({
+                                                                  syllabusId: batchData.syllabusId,
+                                                                  itemId: `topic-${topic}`,
+                                                                  name: topic,
+                                                                  type: 'topic',
+                                                                });
+                                                                setEditItemName(topic);
+                                                                setShowEditSubjectModal(true);
+                                                              }}
+                                                              className="p-1 text-blue-600 hover:bg-blue-50 rounded transition"
+                                                              title="Edit Topic"
+                                                            >
+                                                              <Edit size={12} />
+                                                            </button>
+                                                            {/* + BUTTON FOR TOPIC → Add Subtopic */}
+                                                            <button
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setAddingItem({
+                                                                  syllabusId: batchData.syllabusId,
+                                                                  level: 'topic',
+                                                                  subject,
+                                                                  topic,
+                                                                });
+                                                                setNewItem({
+                                                                  subject,
+                                                                  topic,
+                                                                  subtopic: '',
+                                                                  description: '',
+                                                                  duration_hours: 1,
+                                                                });
+                                                              }}
+                                                              className="p-1 text-green-600 hover:bg-green-50 rounded transition"
+                                                              title="Add Subtopic"
+                                                            >
+                                                              <Plus size={14} />
+                                                            </button>
+                                                          </div>
                                                         </div>
 
                                                         {/* SUBTOPIC LEVEL */}
@@ -780,6 +1128,24 @@ export default function SyllabusPage() {
                                                                   </p>
                                                                 </div>
                                                                 <div className="flex items-center gap-1 ml-2">
+                                                                  {/* EDIT BUTTON FOR SUBTOPIC */}
+                                                                  <button
+                                                                    onClick={(e) => {
+                                                                      e.stopPropagation();
+                                                                      setEditingItem({
+                                                                        syllabusId: batchData.syllabusId,
+                                                                        itemId: item._id,
+                                                                        name: item.subtopic || '',
+                                                                        type: 'subtopic',
+                                                                      });
+                                                                      setEditItemName(item.subtopic || '');
+                                                                      setShowEditSubjectModal(true);
+                                                                    }}
+                                                                    className="p-1 text-blue-600 hover:bg-blue-50 rounded transition"
+                                                                    title="Edit Subtopic"
+                                                                  >
+                                                                    <Edit size={12} />
+                                                                  </button>
                                                                   {/* + BUTTON FOR SUBTOPIC → Add another Subtopic under same Topic */}
                                                                   <button
                                                                     onClick={(e) => {
@@ -983,6 +1349,267 @@ export default function SyllabusPage() {
           }}
         />
       )}
-    </ProtectedRoute>
+
+      {/* Edit Batch Name Modal */}
+      {showEditBatchModal && editingBatch && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Edit Batch Name</h2>
+              <button
+                onClick={() => {
+                  setShowEditBatchModal(false);
+                  setEditingBatch(null);
+                  setEditBatchName('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Batch Name
+                </label>
+                <input
+                  ref={editInputRef}
+                  type="text"
+                  value={editBatchName}
+                  onChange={(e) => setEditBatchName(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter batch name"
+                />
+                <p className="text-xs text-gray-500 mt-1">Press Enter to save or Escape to cancel</p>
+              </div>
+
+              {error && (
+                <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowEditBatchModal(false);
+                    setEditingBatch(null);
+                    setEditBatchName('');
+                    setError(null);
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditBatch}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Course Name Modal */}
+      {showEditCourseModal && editingCourse && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Edit Course Name</h2>
+              <button
+                onClick={() => {
+                  setShowEditCourseModal(false);
+                  setEditingCourse(null);
+                  setEditCourseName('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Course Name
+                </label>
+                <input
+                  ref={editCourseInputRef}
+                  type="text"
+                  value={editCourseName}
+                  onChange={(e) => setEditCourseName(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter course name"
+                />
+                <p className="text-xs text-gray-500 mt-1">Press Enter to save or Escape to cancel</p>
+              </div>
+
+              {error && (
+                <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowEditCourseModal(false);
+                    setEditingCourse(null);
+                    setEditCourseName('');
+                    setError(null);
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditCourse}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Subject/Topic/Subtopic Modal */}
+      {showEditSubjectModal && editingItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-black">
+                Edit {editingItem.type.charAt(0).toUpperCase() + editingItem.type.slice(1)} Name
+              </h2>
+              <button
+                onClick={() => {
+                  setShowEditSubjectModal(false);
+                  setEditingItem(null);
+                  setEditItemName('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">
+                  {editingItem.type.charAt(0).toUpperCase() + editingItem.type.slice(1)} Name
+                </label>
+                <input
+                  ref={editItemInputRef}
+                  type="text"
+                  value={editItemName}
+                  onChange={(e) => setEditItemName(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder={`Enter ${editingItem.type} name`}
+                />
+                <p className="text-xs text-gray-500 mt-1">Press Enter to save or Escape to cancel</p>
+              </div>
+
+              {error && (
+                <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowEditSubjectModal(false);
+                    setEditingItem(null);
+                    setEditItemName('');
+                    setError(null);
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditSyllabusItem}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Academic Year Modal */}
+      {showEditAcademicYearModal && editingAcademicYear && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-black">Edit Academic Year</h2>
+              <button
+                onClick={() => {
+                  setShowEditAcademicYearModal(false);
+                  setEditingAcademicYear(null);
+                  setEditAcademicYearValue('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">
+                  Academic Year
+                </label>
+                <input
+                  ref={editAcademicYearInputRef}
+                  type="text"
+                  value={editAcademicYearValue}
+                  onChange={(e) => setEditAcademicYearValue(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 2024-2025"
+                />
+                <p className="text-xs text-gray-500 mt-1">Press Enter to save or Escape to cancel</p>
+              </div>
+
+              {error && (
+                <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowEditAcademicYearModal(false);
+                    setEditingAcademicYear(null);
+                    setEditAcademicYearValue('');
+                    setError(null);
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditAcademicYear}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}    </ProtectedRoute>
   );
 }
