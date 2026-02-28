@@ -626,12 +626,12 @@ export default function EditEnquiryModal({
                           <Calendar className="h-3 w-3" />
                           {new Date(noteItem.addedAt).toLocaleString()}
                         </div>
-                        {noteItem.addedBy && (
+                        {/* {noteItem.addedBy && (
                           <div className="text-xs text-gray-600 mb-2 flex items-center gap-1">
                             <User className="h-3 w-3" />
                             {noteItem.addedBy.name || `${noteItem.addedBy.fname || ''} ${noteItem.addedBy.lname || ''}`.trim() || 'Unknown'}
                           </div>
-                        )}
+                        )} */}
                         <p className="text-sm text-gray-700 break-words">{noteItem.note}</p>
                       </div>
                     ))}
