@@ -9,13 +9,9 @@ import {
   Trash2,
   Search,
   AlertCircle,
-  ChevronDown,
-  ChevronRight,
   BookOpen,
   Layers,
-  FileText,
   Loader2,
-  RefreshCw,
   Upload,
   X,
   Edit,
@@ -52,6 +48,8 @@ interface SyllabusRecord {
   academic_year: string;
   items: SyllabusItem[];
   created_by: { _id: string; email: string };
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface GroupedData {
@@ -84,13 +82,21 @@ export default function SyllabusPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
-  const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
-  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
-  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
-
   const [showCreateSyllabus, setShowCreateSyllabus] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
+
+  const [showSyllabusDetailModal, setShowSyllabusDetailModal] = useState(false);
+  const [selectedSyllabusData, setSelectedSyllabusData] = useState<{
+    courseId: string;
+    courseName: string;
+    batchId: string;
+    batchName: string;
+    syllabusId: string;
+    academicYear: string;
+    subjects: { [key: string]: { topics: { [key: string]: SyllabusItem[] } } };
+  } | null>(null);
+  const [selectedSubjectInModal, setSelectedSubjectInModal] = useState<string | null>(null);
+  const [selectedTopicInModal, setSelectedTopicInModal] = useState<string | null>(null);
 
   const [showEditBatchModal, setShowEditBatchModal] = useState(false);
   const [editingBatch, setEditingBatch] = useState<{ id: string; name: string } | null>(null);
@@ -136,10 +142,22 @@ export default function SyllabusPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
 
+  // Toast notifications state
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' }>>([]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    const id = Date.now().toString();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3000);
+  };
+
   useEffect(() => {
     fetchSyllabi();
     fetchCourses();
     fetchBatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle edit modal keyboard shortcuts and auto-focus
@@ -242,6 +260,25 @@ export default function SyllabusPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showEditAcademicYearModal]);
 
+  // Sync selected syllabus data when grouped data changes
+  useEffect(() => {
+    if (selectedSyllabusData && groupedData[selectedSyllabusData.courseId]) {
+      const courseData = groupedData[selectedSyllabusData.courseId];
+      const batchData = courseData.batches[selectedSyllabusData.batchId];
+      if (batchData) {
+        setSelectedSyllabusData((prev) =>
+          prev
+            ? {
+                ...prev,
+                subjects: batchData.subjects,
+              }
+            : null
+        );
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupedData]);
+
   const fetchSyllabi = async () => {
     setLoading(true);
     setError(null);
@@ -259,8 +296,9 @@ export default function SyllabusPage() {
       } else {
         setError(data.message || 'Failed to fetch syllabus');
       }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -375,8 +413,9 @@ export default function SyllabusPage() {
       } else {
         setError(data.message || 'Failed to create syllabus');
       }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
     }
   };
 
@@ -427,48 +466,9 @@ export default function SyllabusPage() {
       } else {
         setError(data.message || 'Failed to add item');
       }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`);
-    }
-  };
-
-  const handleDeleteItem = async (syllabusId: string, itemId: string) => {
-    if (!confirm('Delete this item?')) return;
-
-    try {
-      const response = await fetch(`${API_BASE}/api/syllabus/${syllabusId}/items/${itemId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        await fetchSyllabi();
-      } else {
-        setError(data.message || 'Failed to delete item');
-      }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`);
-    }
-  };
-
-  const handleDeleteSyllabus = async (syllabusId: string) => {
-    if (!confirm('Are you sure you want to delete this entire syllabus?')) return;
-
-    try {
-      const response = await fetch(`${API_BASE}/api/syllabus/${syllabusId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        await fetchSyllabi();
-      } else {
-        setError(data.message || 'Failed to delete syllabus');
-      }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
     }
   };
 
@@ -495,8 +495,9 @@ export default function SyllabusPage() {
       } else {
         setError(data.message || 'Failed to update batch name');
       }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
     }
   };
 
@@ -524,8 +525,9 @@ export default function SyllabusPage() {
       } else {
         setError(data.message || 'Failed to update course name');
       }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
     }
   };
 
@@ -536,7 +538,7 @@ export default function SyllabusPage() {
     }
 
     try {
-      let requestBody: any = {};
+      let requestBody: Record<string, string | number> = {};
       let url = `${API_BASE}/api/syllabus/${editingItem.syllabusId}`;
 
       if (editingItem.type === 'subtopic') {
@@ -570,8 +572,9 @@ export default function SyllabusPage() {
       } else {
         setError(data.message || `Failed to update ${editingItem.type}`);
       }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
     }
   };
 
@@ -602,12 +605,13 @@ export default function SyllabusPage() {
       } else {
         setError(data.message || 'Failed to update academic year');
       }
-    } catch (err: any) {
-      setError(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
     }
   };
 
-  const filteredCourses = Object.entries(groupedData).filter(([courseId, courseData]) => {
+  const filteredCourses = Object.entries(groupedData).filter(([, courseData]) => {
     const query = searchQuery.toLowerCase();
     return (
       courseData.courseName.toLowerCase().includes(query) ||
@@ -634,6 +638,374 @@ export default function SyllabusPage() {
     if (addingItem.level === 'subject') return 'Add New Topic';
     if (addingItem.level === 'topic') return 'Add New Subtopic';
     return 'Add New Item';
+  };
+
+  // Modal CRUD Handlers
+  const handleModalAddItem = async () => {
+    if (!selectedSyllabusData) return;
+
+    // Validation
+    if (addingItem?.level === 'batch' && !newItem.subject.trim()) {
+      setError('Subject name is required');
+      return;
+    }
+    if (addingItem?.level === 'subject' && !newItem.topic.trim()) {
+      setError('Topic/Chapter name is required');
+      return;
+    }
+    if ((addingItem?.level === 'topic' || addingItem?.level === 'subtopic') && !newItem.subtopic.trim()) {
+      setError('Subtopic name is required');
+      return;
+    }
+
+    try {
+      // Prepare the payload
+      const payload = {
+        subject: newItem.subject || addingItem?.subject,
+        topic: newItem.topic || addingItem?.topic,
+        subtopic: newItem.subtopic,
+        description: newItem.description,
+        duration_hours: newItem.duration_hours,
+      };
+
+      // Update local state immediately for instant UI feedback
+      const updatedSubjects = JSON.parse(JSON.stringify(selectedSyllabusData.subjects)) as typeof selectedSyllabusData.subjects;
+
+      if (addingItem?.level === 'batch') {
+        // Adding a new subject
+        const subjectName = newItem.subject;
+        if (!updatedSubjects[subjectName]) {
+          updatedSubjects[subjectName] = { topics: {} };
+        }
+      } else if (addingItem?.level === 'subject') {
+        // Adding a new topic/chapter
+        const subject = newItem.subject || (addingItem?.subject as string);
+        if (!updatedSubjects[subject]) {
+          updatedSubjects[subject] = { topics: {} };
+        }
+        if (!updatedSubjects[subject].topics[newItem.topic]) {
+          updatedSubjects[subject].topics[newItem.topic] = [];
+        }
+      } else if (addingItem?.level === 'topic' || addingItem?.level === 'subtopic') {
+        // Adding a new subtopic/item
+        const subject = (newItem.subject || addingItem?.subject || '') as string;
+        const topic = (newItem.topic || addingItem?.topic || '') as string;
+        if (!updatedSubjects[subject]?.topics[topic]) {
+          if (!updatedSubjects[subject]) updatedSubjects[subject] = { topics: {} };
+          updatedSubjects[subject].topics[topic] = [];
+        }
+        updatedSubjects[subject].topics[topic].push({
+          _id: `temp-${Date.now()}`, // Temporary ID until API response
+          subject,
+          topic,
+          subtopic: newItem.subtopic,
+          description: newItem.description,
+          duration_hours: newItem.duration_hours,
+        });
+      }
+
+      setSelectedSyllabusData({
+        ...selectedSyllabusData,
+        subjects: updatedSubjects,
+      });
+
+      // Reset form immediately
+      setNewItem({
+        subject: '',
+        topic: '',
+        subtopic: '',
+        description: '',
+        duration_hours: 1,
+      });
+      setAddingItem(null);
+
+      // API call in background
+      const response = await fetch(
+        `${API_BASE}/api/syllabus/${selectedSyllabusData.syllabusId}/items`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.message || 'Failed to add item');
+        // Refresh to revert changes
+        await fetchSyllabi();
+      } else {
+        // Refresh data to sync with server
+        await fetchSyllabi();
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
+      await fetchSyllabi();
+    }
+  };
+
+  const handleModalEditSubject = async (oldSubjectName: string, newSubjectName: string) => {
+    if (!selectedSyllabusData || !newSubjectName.trim()) {
+      setError('Subject name cannot be empty');
+      return;
+    }
+
+    if (oldSubjectName === newSubjectName) {
+      setShowEditSubjectModal(false);
+      setEditingItem(null);
+      setEditItemName('');
+      return;
+    }
+
+    try {
+      // Update local state immediately
+      const updatedSubjects = JSON.parse(JSON.stringify(selectedSyllabusData.subjects));
+      updatedSubjects[newSubjectName] = updatedSubjects[oldSubjectName];
+      delete updatedSubjects[oldSubjectName];
+
+      setSelectedSyllabusData({
+        ...selectedSyllabusData,
+        subjects: updatedSubjects,
+      });
+
+      setShowEditSubjectModal(false);
+      setEditingItem(null);
+      setEditItemName('');
+      showToast('Subject updated successfully', 'success');
+
+      // API call in background
+      const response = await fetch(
+        `${API_BASE}/api/syllabus/${selectedSyllabusData.syllabusId}/bulk-update-field`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            fieldType: 'subject',
+            oldValue: oldSubjectName,
+            newValue: newSubjectName,
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.message || 'Failed to update subject');
+        showToast('Failed to update subject', 'error');
+        await fetchSyllabi();
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
+      showToast(`Error: ${errorMessage}`, 'error');
+      await fetchSyllabi();
+    }
+  };
+
+  const handleModalEditTopic = async (
+    subject: string,
+    oldTopicName: string,
+    newTopicName: string
+  ) => {
+    if (!selectedSyllabusData || !newTopicName.trim()) {
+      setError('Topic name cannot be empty');
+      return;
+    }
+
+    if (oldTopicName === newTopicName) {
+      setShowEditSubjectModal(false);
+      setEditingItem(null);
+      setEditItemName('');
+      return;
+    }
+
+    try {
+      // Update local state immediately
+      const updatedSubjects = JSON.parse(JSON.stringify(selectedSyllabusData.subjects));
+      updatedSubjects[subject].topics[newTopicName] = updatedSubjects[subject].topics[oldTopicName];
+      delete updatedSubjects[subject].topics[oldTopicName];
+
+      setSelectedSyllabusData({
+        ...selectedSyllabusData,
+        subjects: updatedSubjects,
+      });
+
+      setShowEditSubjectModal(false);
+      setEditingItem(null);
+      setEditItemName('');
+      showToast('Chapter updated successfully', 'success');
+
+      // API call in background
+      const response = await fetch(
+        `${API_BASE}/api/syllabus/${selectedSyllabusData.syllabusId}/bulk-update-field`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            fieldType: 'topic',
+            oldValue: oldTopicName,
+            newValue: newTopicName,
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.message || 'Failed to update topic');
+        showToast('Failed to update chapter', 'error');
+        await fetchSyllabi();
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
+      showToast(`Error: ${errorMessage}`, 'error');
+      await fetchSyllabi();
+    }
+  };
+
+  const handleModalEditItem = async (
+    itemId: string,
+    subject: string,
+    topic: string,
+    newSubtopicName: string
+  ) => {
+    if (!selectedSyllabusData || !newSubtopicName.trim()) {
+      setError('Topic name cannot be empty');
+      return;
+    }
+
+    try {
+      // Update local state immediately
+      const updatedSubjects = JSON.parse(JSON.stringify(selectedSyllabusData.subjects));
+      const itemIndex = updatedSubjects[subject].topics[topic].findIndex(
+        (item: SyllabusItem) => item._id === itemId
+      );
+
+      if (itemIndex !== -1) {
+        updatedSubjects[subject].topics[topic][itemIndex].subtopic = newSubtopicName;
+      }
+
+      setSelectedSyllabusData({
+        ...selectedSyllabusData,
+        subjects: updatedSubjects,
+      });
+
+      setShowEditSubjectModal(false);
+      setEditingItem(null);
+      setEditItemName('');
+      showToast('Topic updated successfully', 'success');
+
+      // API call in background
+      const response = await fetch(
+        `${API_BASE}/api/syllabus/${selectedSyllabusData.syllabusId}/items/${itemId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ subtopic: newSubtopicName }),
+        }
+      );
+
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.message || 'Failed to update item');
+        showToast('Failed to update topic', 'error');
+        await fetchSyllabi();
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
+      showToast(`Error: ${errorMessage}`, 'error');
+      await fetchSyllabi();
+    }
+  };
+
+  const handleModalDeleteTopic = async (subject: string, topic: string) => {
+    if (!selectedSyllabusData) return;
+
+    if (!confirm(`Delete chapter "${topic}" and all its topics?`)) return;
+
+    try {
+      // Update local state immediately
+      const updatedSubjects = JSON.parse(JSON.stringify(selectedSyllabusData.subjects));
+      delete updatedSubjects[subject].topics[topic];
+
+      setSelectedSyllabusData({
+        ...selectedSyllabusData,
+        subjects: updatedSubjects,
+      });
+
+      if (selectedTopicInModal === topic) {
+        setSelectedTopicInModal(null);
+      }
+
+      showToast('Chapter deleted successfully', 'success');
+
+      // Get all items for this topic to delete them
+      const itemsToDelete = syllabi
+        .find((s) => s._id === selectedSyllabusData.syllabusId)
+        ?.items.filter((item) => item.subject === subject && item.topic === topic) || [];
+
+      // Delete all items in background
+      for (const item of itemsToDelete) {
+        await fetch(`${API_BASE}/api/syllabus/${selectedSyllabusData.syllabusId}/items/${item._id}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+      }
+
+      // Refresh data to sync
+      await fetchSyllabi();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
+      showToast(`Error: ${errorMessage}`, 'error');
+      await fetchSyllabi();
+    }
+  };
+
+  const handleModalDeleteItem = async (itemId: string, subject: string, topic: string) => {
+    if (!selectedSyllabusData) return;
+
+    if (!confirm('Delete this topic?')) return;
+
+    try {
+      // Update local state immediately
+      const updatedSubjects = JSON.parse(JSON.stringify(selectedSyllabusData.subjects));
+      updatedSubjects[subject].topics[topic] = updatedSubjects[subject].topics[topic].filter(
+        (item: SyllabusItem) => item._id !== itemId
+      );
+
+      setSelectedSyllabusData({
+        ...selectedSyllabusData,
+        subjects: updatedSubjects,
+      });
+      showToast('Topic deleted successfully', 'success');
+
+      // API call in background
+      const response = await fetch(
+        `${API_BASE}/api/syllabus/${selectedSyllabusData.syllabusId}/items/${itemId}`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+        }
+      );
+
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.message || 'Failed to delete item');
+        showToast('Failed to delete topic', 'error');
+        await fetchSyllabi();
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Error: ${errorMessage}`);
+      showToast(`Error: ${errorMessage}`, 'error');
+      await fetchSyllabi();
+    }
   };
 
   return (
@@ -698,7 +1070,7 @@ export default function SyllabusPage() {
                         <select
                           value={formData.batchid}
                           onChange={(e) => setFormData({ ...formData, batchid: e.target.value })}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           <option value="">Select Batch</option>
                           {batches.map((batch) => (
@@ -717,7 +1089,7 @@ export default function SyllabusPage() {
                         <select
                           value={formData.courseid}
                           onChange={(e) => setFormData({ ...formData, courseid: e.target.value })}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           <option value="">Select Course</option>
                           {courses.map((course) => (
@@ -737,7 +1109,7 @@ export default function SyllabusPage() {
                           type="text"
                           value={formData.academicyear}
                           onChange={(e) => setFormData({ ...formData, academicyear: e.target.value })}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           placeholder="2024-2025"
                         />
                       </div>
@@ -772,7 +1144,7 @@ export default function SyllabusPage() {
                     placeholder="Search courses, subjects, topics..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -787,423 +1159,153 @@ export default function SyllabusPage() {
                   <p className="text-gray-500">No syllabus data found</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {filteredCourses.map(([courseId, courseData]) => (
-                    <div key={courseId} className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                      {/* COURSE LEVEL */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredCourses.map(([courseId, courseData]) => {
+                    // Calculate course-level statistics
+                    const allBatches = Object.entries(courseData.batches);
+                    const totalSubjects = allBatches.reduce((sum, [, batchData]) => {
+                      return sum + Object.keys(batchData.subjects).length;
+                    }, 0);
+
+                    const totalItems = allBatches.reduce((sum, [, batchData]) => {
+                      return (
+                        sum +
+                        Object.values(batchData.subjects).reduce((subjectSum, subjectData) => {
+                          return (
+                            subjectSum +
+                            Object.values(subjectData.topics).reduce((topicSum, items) => {
+                              return topicSum + items.length;
+                            }, 0)
+                          );
+                        }, 0)
+                      );
+                    }, 0);
+
+                    // Get the first batch's academic year and get the latest created_at date
+                    const firstBatchData = allBatches[0]?.[1];
+                    const academicYear = firstBatchData?.academicYear || new Date().getFullYear().toString();
+                    
+                    // Find the most recent syllabus in this course
+                    const newestSyllabus = syllabi
+                      .filter((s) => s.course_id._id === courseId)
+                      .sort((a, b) => {
+                        const aDate = new Date(a.updated_at || a.created_at || new Date()).getTime();
+                        const bDate = new Date(b.updated_at || b.created_at || new Date()).getTime();
+                        return bDate - aDate;
+                      })[0];
+
+                    const lastUpdated = newestSyllabus?.updated_at || newestSyllabus?.created_at;
+
+                    // Calculate progress percentage based on items
+
+                    const progressPercent = totalItems > 0 ? Math.min((totalItems / Math.max(totalItems, 10)) * 100, 100) : 0;
+
+                    // Determine status: ACTIVE if has items, DRAFT if empty
+                    const status = totalItems > 0 ? 'ACTIVE' : 'DRAFT';
+                    const statusColor = status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
+
+                    // Format last updated time
+                    const formatLastUpdated = (dateString: string | undefined) => {
+                      if (!dateString) return 'Just now';
+                      const date = new Date(dateString);
+                      const now = new Date();
+                      const diffTime = Math.abs(now.getTime() - date.getTime());
+                      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                      const diffHours = Math.floor(diffTime / (1000 * 60 * 60));
+                      const diffMinutes = Math.floor(diffTime / (1000 * 60));
+
+                      if (diffDays > 7) {
+                        const weeks = Math.floor(diffDays / 7);
+                        return `${weeks}w ago`;
+                      } else if (diffDays > 0) {
+                        return `${diffDays}d ago`;
+                      } else if (diffHours > 0) {
+                        return `${diffHours}h ago`;
+                      } else if (diffMinutes > 0) {
+                        return `${diffMinutes}m ago`;
+                      }
+                      return 'Just now';
+                    };
+
+                    // Get batch name or display format
+                    const batchDisplay = allBatches
+                      .map(([, batchData]) => batchData.batchName)
+                      .join(', ');
+
+                    return (
                       <div
-                        className="flex items-center justify-between p-4 hover:bg-gray-50 cursor-pointer transition"
+                        key={courseId}
                         onClick={() => {
-                          const next = new Set(expandedCourses);
-                          next.has(courseId) ? next.delete(courseId) : next.add(courseId);
-                          setExpandedCourses(next);
+                          setSelectedSyllabusData({
+                            courseId,
+                            courseName: courseData.courseName,
+                            batchId: courseId,
+                            batchName: batchDisplay || 'General',
+                            syllabusId: allBatches[0]?.[1].syllabusId || '',
+                            academicYear: academicYear,
+                            subjects: allBatches.reduce((acc, [, batchData]) => {
+                              return { ...acc, ...batchData.subjects };
+                            }, {}),
+                          });
+                          setSelectedSubjectInModal(null);
+                          setSelectedTopicInModal(null);
+                          setShowSyllabusDetailModal(true);
                         }}
+                        className="bg-white rounded-lg shadow-md hover:shadow-lg transition cursor-pointer border border-gray-100 overflow-hidden group"
                       >
-                        <div className="flex items-center gap-3 flex-1">
-                          {expandedCourses.has(courseId) ? (
-                            <ChevronDown className="h-5 w-5 text-gray-500" />
-                          ) : (
-                            <ChevronRight className="h-5 w-5 text-gray-500" />
-                          )}
-                          <BookOpen className="h-5 w-5 text-blue-600" />
+                    {/* Card Header with Icon */}
+                    <div className="p-5 border-b border-gray-100">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition">
+                          <BookOpen className="h-6 w-6 text-blue-600" />
+                        </div>
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusColor}`}>
+                          {status}
+                        </span>
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-1">{courseData.courseName}</h3>
+                      <p className="text-xs text-gray-600">
+                        {batchDisplay || 'General'} • Academic Year {academicYear}
+                      </p>
+                    </div>
+
+                    {/* Card Progress Section */}
+                    <div className="px-5 py-4 border-b border-gray-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Progress</p>
+                        <span className="text-sm font-bold text-gray-900">{Math.round(progressPercent)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full transition-all"
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Card Stats Section */}
+                    <div className="px-5 py-4 bg-gray-50">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <Layers className="h-4 w-4 text-gray-500" />
                           <div>
-                            <h3 className="font-semibold text-gray-900">{courseData.courseName}</h3>
-                            <p className="text-xs text-gray-600">
-                              {Object.keys(courseData.batches).length} batches
-                            </p>
+                            <p className="text-xs text-gray-600">Subjects</p>
+                            <p className="text-lg font-bold text-gray-900">{totalSubjects}</p>
                           </div>
                         </div>
-                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                          {Object.keys(courseData.batches).length}
-                        </span>
-                        {/* EDIT BUTTON FOR COURSE NAME */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingCourse({
-                              id: courseId,
-                              name: courseData.courseName,
-                            });
-                            setEditCourseName(courseData.courseName);
-                            setShowEditCourseModal(true);
-                          }}
-                          className="ml-2 p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
-                          title="Edit Course Name"
-                        >
-                          <Edit size={16} />
-                        </button>
-                      </div>
-
-                      {/* BATCH LEVEL */}
-                      {expandedCourses.has(courseId) && (
-                        <div className="border-t border-gray-200 bg-gray-50 p-4 space-y-3">
-                          {Object.entries(courseData.batches).map(([batchId, batchData]) => {
-                            const batchKey = `${courseId}-${batchId}`;
-                            return (
-                              <div
-                                key={batchId}
-                                className="bg-white rounded-lg border border-gray-200 overflow-hidden"
-                              >
-                                <div
-                                  className="flex items-center justify-between p-3 hover:bg-gray-50 cursor-pointer transition"
-                                  onClick={() => {
-                                    const next = new Set(expandedBatches);
-                                    next.has(batchKey) ? next.delete(batchKey) : next.add(batchKey);
-                                    setExpandedBatches(next);
-                                  }}
-                                >
-                                  <div className="flex items-center gap-3 flex-1">
-                                    {expandedBatches.has(batchKey) ? (
-                                      <ChevronDown className="h-4 w-4 text-gray-500" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4 text-gray-500" />
-                                    )}
-                                    <Layers className="h-4 w-4 text-purple-600" />
-                                    <div>
-                                      <h4 className="text-sm font-semibold text-gray-900">
-                                        {batchData.batchName}
-                                      </h4>
-                                      <p className="text-xs text-gray-600">
-                                        {Object.keys(batchData.subjects).length} subjects
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
-                                      {Object.keys(batchData.subjects).length}
-                                    </span>
-                                    {/* EDIT BUTTON FOR ACADEMIC YEAR */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingAcademicYear({
-                                          syllabusId: batchData.syllabusId,
-                                          academicYear: batchData.academicYear,
-                                        });
-                                        setEditAcademicYearValue(batchData.academicYear);
-                                        setShowEditAcademicYearModal(true);
-                                      }}
-                                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
-                                      title="Edit Academic Year"
-                                    >
-                                      <Edit size={16} />
-                                    </button>
-                                    {/* + BUTTON FOR BATCH → Add Subject */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setAddingItem({
-                                          syllabusId: batchData.syllabusId,
-                                          level: 'batch',
-                                        });
-                                        setNewItem({
-                                          subject: '',
-                                          topic: '',
-                                          subtopic: '',
-                                          description: '',
-                                          duration_hours: 1,
-                                        });
-                                      }}
-                                      className="p-1.5 text-green-600 hover:bg-green-50 rounded transition"
-                                      title="Add Subject"
-                                    >
-                                      <Plus size={16} />
-                                    </button>
-                                    {/* EDIT BUTTON FOR BATCH NAME */}
-                                    {batchData.actualBatchId && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEditingBatch({
-                                            id: batchData.actualBatchId!,
-                                            name: batchData.batchName,
-                                          });
-                                          setEditBatchName(batchData.batchName);
-                                          setShowEditBatchModal(true);
-                                        }}
-                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
-                                        title="Edit Batch Name"
-                                      >
-                                        <Edit size={16} />
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteSyllabus(batchData.syllabusId);
-                                      }}
-                                      className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* SUBJECT LEVEL */}
-                                {expandedBatches.has(batchKey) && (
-                                  <div className="border-t border-gray-200 bg-gray-50 p-3 space-y-2">
-                                    {Object.keys(batchData.subjects).length === 0 ? (
-                                      <p className="text-sm text-gray-500 p-2">No subjects yet</p>
-                                    ) : (
-                                      Object.entries(batchData.subjects).map(([subject, subjectData]) => {
-                                        const subjectKey = `${batchKey}-${subject}`;
-                                        return (
-                                          <div
-                                            key={subject}
-                                            className="bg-white rounded border border-gray-200 overflow-hidden"
-                                          >
-                                            <div
-                                              className="flex items-center justify-between p-3 hover:bg-gray-50 cursor-pointer transition"
-                                              onClick={() => {
-                                                const next = new Set(expandedSubjects);
-                                                next.has(subjectKey)
-                                                  ? next.delete(subjectKey)
-                                                  : next.add(subjectKey);
-                                                setExpandedSubjects(next);
-                                              }}
-                                            >
-                                              <div className="flex items-center gap-2 flex-1">
-                                                {expandedSubjects.has(subjectKey) ? (
-                                                  <ChevronDown className="h-4 w-4 text-gray-500" />
-                                                ) : (
-                                                  <ChevronRight className="h-4 w-4 text-gray-500" />
-                                                )}
-                                                <FileText className="h-4 w-4 text-orange-600" />
-                                                <div>
-                                                  <p className="text-sm font-semibold text-gray-900">
-                                                    {subject}
-                                                  </p>
-                                                  <p className="text-xs text-gray-600">
-                                                    {Object.keys(subjectData.topics).length} topics
-                                                  </p>
-                                                </div>
-                                              </div>
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
-                                                  {Object.keys(subjectData.topics).length}
-                                                </span>
-                                                {/* EDIT BUTTON FOR SUBJECT */}
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setEditingItem({
-                                                      syllabusId: batchData.syllabusId,
-                                                      itemId: `subject-${subject}`,
-                                                      name: subject,
-                                                      type: 'subject',
-                                                    });
-                                                    setEditItemName(subject);
-                                                    setShowEditSubjectModal(true);
-                                                  }}
-                                                  className="p-1 text-blue-600 hover:bg-blue-50 rounded transition"
-                                                  title="Edit Subject"
-                                                >
-                                                  <Edit size={14} />
-                                                </button>
-                                                {/* + BUTTON FOR SUBJECT → Add Topic */}
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setAddingItem({
-                                                      syllabusId: batchData.syllabusId,
-                                                      level: 'subject',
-                                                      subject,
-                                                    });
-                                                    setNewItem({
-                                                      subject,
-                                                      topic: '',
-                                                      subtopic: '',
-                                                      description: '',
-                                                      duration_hours: 1,
-                                                    });
-                                                  }}
-                                                  className="p-1 text-green-600 hover:bg-green-50 rounded transition"
-                                                  title="Add Topic"
-                                                >
-                                                  <Plus size={14} />
-                                                </button>
-                                              </div>
-                                            </div>
-
-                                            {/* TOPIC LEVEL */}
-                                            {expandedSubjects.has(subjectKey) && (
-                                              <div className="border-t border-gray-200 bg-gray-50 p-2 space-y-2">
-                                                {Object.keys(subjectData.topics).length === 0 ? (
-                                                  <p className="text-sm text-gray-500 p-2">No topics yet</p>
-                                                ) : (
-                                                  Object.entries(subjectData.topics).map(([topic, items]) => {
-                                                    const topicKey = `${subjectKey}-${topic}`;
-                                                    return (
-                                                      <div
-                                                        key={topic}
-                                                        className="bg-white rounded border border-gray-200 overflow-hidden"
-                                                      >
-                                                        <div
-                                                          className="flex items-center justify-between p-2 hover:bg-gray-50 cursor-pointer transition"
-                                                          onClick={() => {
-                                                            const next = new Set(expandedTopics);
-                                                            next.has(topicKey)
-                                                              ? next.delete(topicKey)
-                                                              : next.add(topicKey);
-                                                            setExpandedTopics(next);
-                                                          }}
-                                                        >
-                                                          <div className="flex items-center gap-2 flex-1">
-                                                            {expandedTopics.has(topicKey) ? (
-                                                              <ChevronDown className="h-3 w-3 text-gray-500" />
-                                                            ) : (
-                                                              <ChevronRight className="h-3 w-3 text-gray-500" />
-                                                            )}
-                                                            <p className="text-sm font-semibold text-gray-900">
-                                                              {topic}
-                                                            </p>
-                                                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                                              {items.length}
-                                                            </span>
-                                                          </div>
-                                                          <div className="flex items-center gap-1">
-                                                            {/* EDIT BUTTON FOR TOPIC */}
-                                                            <button
-                                                              onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setEditingItem({
-                                                                  syllabusId: batchData.syllabusId,
-                                                                  itemId: `topic-${topic}`,
-                                                                  name: topic,
-                                                                  type: 'topic',
-                                                                });
-                                                                setEditItemName(topic);
-                                                                setShowEditSubjectModal(true);
-                                                              }}
-                                                              className="p-1 text-blue-600 hover:bg-blue-50 rounded transition"
-                                                              title="Edit Topic"
-                                                            >
-                                                              <Edit size={12} />
-                                                            </button>
-                                                            {/* + BUTTON FOR TOPIC → Add Subtopic */}
-                                                            <button
-                                                              onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setAddingItem({
-                                                                  syllabusId: batchData.syllabusId,
-                                                                  level: 'topic',
-                                                                  subject,
-                                                                  topic,
-                                                                });
-                                                                setNewItem({
-                                                                  subject,
-                                                                  topic,
-                                                                  subtopic: '',
-                                                                  description: '',
-                                                                  duration_hours: 1,
-                                                                });
-                                                              }}
-                                                              className="p-1 text-green-600 hover:bg-green-50 rounded transition"
-                                                              title="Add Subtopic"
-                                                            >
-                                                              <Plus size={14} />
-                                                            </button>
-                                                          </div>
-                                                        </div>
-
-                                                        {/* SUBTOPIC LEVEL */}
-                                                        {expandedTopics.has(topicKey) && (
-                                                          <div className="border-t border-gray-200 bg-gray-50 p-2 space-y-1">
-                                                            {items.map((item) => (
-                                                              <div
-                                                                key={item._id}
-                                                                className="bg-white p-2 rounded border border-gray-200 flex justify-between items-start hover:bg-gray-50 transition"
-                                                              >
-                                                                <div className="flex-1">
-                                                                  <p className="text-sm font-semibold text-gray-900">
-                                                                    {item.subtopic || 'No Subtopic'}
-                                                                  </p>
-                                                                  {item.description && (
-                                                                    <p className="text-xs text-gray-500 mt-0.5">
-                                                                      {item.description}
-                                                                    </p>
-                                                                  )}
-                                                                  <p className="text-xs text-gray-400 mt-1">
-                                                                    {item.duration_hours || 1}h
-                                                                  </p>
-                                                                </div>
-                                                                <div className="flex items-center gap-1 ml-2">
-                                                                  {/* EDIT BUTTON FOR SUBTOPIC */}
-                                                                  <button
-                                                                    onClick={(e) => {
-                                                                      e.stopPropagation();
-                                                                      setEditingItem({
-                                                                        syllabusId: batchData.syllabusId,
-                                                                        itemId: item._id,
-                                                                        name: item.subtopic || '',
-                                                                        type: 'subtopic',
-                                                                      });
-                                                                      setEditItemName(item.subtopic || '');
-                                                                      setShowEditSubjectModal(true);
-                                                                    }}
-                                                                    className="p-1 text-blue-600 hover:bg-blue-50 rounded transition"
-                                                                    title="Edit Subtopic"
-                                                                  >
-                                                                    <Edit size={12} />
-                                                                  </button>
-                                                                  {/* + BUTTON FOR SUBTOPIC → Add another Subtopic under same Topic */}
-                                                                  <button
-                                                                    onClick={(e) => {
-                                                                      e.stopPropagation();
-                                                                      setAddingItem({
-                                                                        syllabusId: batchData.syllabusId,
-                                                                        level: 'subtopic',
-                                                                        subject,
-                                                                        topic,
-                                                                      });
-                                                                      setNewItem({
-                                                                        subject,
-                                                                        topic,
-                                                                        subtopic: '',
-                                                                        description: '',
-                                                                        duration_hours: 1,
-                                                                      });
-                                                                    }}
-                                                                    className="p-1 text-green-600 hover:bg-green-50 rounded transition"
-                                                                    title="Add Subtopic"
-                                                                  >
-                                                                    <Plus size={12} />
-                                                                  </button>
-                                                                  <button
-                                                                    onClick={() =>
-                                                                      handleDeleteItem(
-                                                                        batchData.syllabusId,
-                                                                        item._id
-                                                                      )
-                                                                    }
-                                                                    className="p-1 text-red-600 hover:bg-red-50 rounded transition"
-                                                                  >
-                                                                    <Trash2 size={12} />
-                                                                  </button>
-                                                                </div>
-                                                              </div>
-                                                            ))}
-                                                          </div>
-                                                        )}
-                                                      </div>
-                                                    );
-                                                  })
-                                                )}
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                        <div className="border-l border-gray-300"></div>
+                        <div className="flex-1 text-right">
+                          <p className="text-xs text-gray-600 flex items-center justify-end gap-1">
+                            <span className="inline-block w-2 h-2 rounded-full bg-gray-400"></span>
+                            Updated {formatLastUpdated(lastUpdated)}
+                          </p>
                         </div>
-                      )}
+                      </div>
                     </div>
-                  ))}
+
+                  </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1213,23 +1315,23 @@ export default function SyllabusPage() {
 
       {/* Add Item Modal */}
       {addingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">{getModalTitle()}</h3>
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-sm sm:max-w-md p-4 sm:p-6 max-h-[95vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4 sm:mb-6">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">{getModalTitle()}</h3>
               <button
                 onClick={() => setAddingItem(null)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 flex-shrink-0"
               >
                 <X size={20} />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {/* Subject Field - shown when adding from batch level or below */}
               {addingItem.level === 'batch' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                     Subject <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -1237,7 +1339,7 @@ export default function SyllabusPage() {
                     value={newItem.subject}
                     onChange={(e) => setNewItem({ ...newItem, subject: e.target.value })}
                     placeholder="e.g., Mathematics"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               )}
@@ -1245,7 +1347,7 @@ export default function SyllabusPage() {
               {/* Topic Field - shown when adding from subject level or below */}
               {(addingItem.level === 'batch' || addingItem.level === 'subject') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                     {addingItem.level === 'subject' ? 'Topic' : 'Topic (optional)'}{' '}
                     {addingItem.level === 'subject' && <span className="text-red-500">*</span>}
                   </label>
@@ -1254,7 +1356,7 @@ export default function SyllabusPage() {
                     value={newItem.topic}
                     onChange={(e) => setNewItem({ ...newItem, topic: e.target.value })}
                     placeholder="e.g., Algebra"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               )}
@@ -1262,13 +1364,13 @@ export default function SyllabusPage() {
               {/* Display Subject & Topic when adding subtopic */}
               {(addingItem.level === 'topic' || addingItem.level === 'subtopic') && (
                 <>
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-gray-600">Subject</p>
-                    <p className="text-sm font-semibold text-gray-900">{newItem.subject}</p>
+                    <p className="text-xs sm:text-sm font-semibold text-gray-900">{newItem.subject}</p>
                   </div>
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-gray-600">Topic</p>
-                    <p className="text-sm font-semibold text-gray-900">{newItem.topic}</p>
+                    <p className="text-xs sm:text-sm font-semibold text-gray-900">{newItem.topic}</p>
                   </div>
                 </>
               )}
@@ -1276,7 +1378,7 @@ export default function SyllabusPage() {
               {/* Subtopic Field - shown when adding at topic/subtopic level */}
               {(addingItem.level === 'topic' || addingItem.level === 'subtopic') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                     Subtopic <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -1284,14 +1386,14 @@ export default function SyllabusPage() {
                     value={newItem.subtopic}
                     onChange={(e) => setNewItem({ ...newItem, subtopic: e.target.value })}
                     placeholder="e.g., Linear Equations"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               )}
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                   Description
                 </label>
                 <textarea
@@ -1299,13 +1401,13 @@ export default function SyllabusPage() {
                   onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
                   placeholder="Optional notes"
                   rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Duration */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                   Duration (hours)
                 </label>
                 <input
@@ -1316,20 +1418,22 @@ export default function SyllabusPage() {
                   }
                   min="0.5"
                   step="0.5"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-2 sm:gap-3 pt-4">
                 <button
                   onClick={() => setAddingItem(null)}
-                  className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg font-medium text-sm transition"
+                  className="flex-1 px-3 sm:px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg font-medium text-xs sm:text-sm transition"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleAddItem}
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition"
+                  onClick={() =>
+                    showSyllabusDetailModal ? handleModalAddItem() : handleAddItem()
+                  }
+                  className="flex-1 px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-xs sm:text-sm transition"
                 >
                   Add {getModalTitle().split(' ').pop()}
                 </button>
@@ -1352,25 +1456,25 @@ export default function SyllabusPage() {
 
       {/* Edit Batch Name Modal */}
       {showEditBatchModal && editingBatch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Edit Batch Name</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-lg shadow-xl max-w-sm w-full">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900">Edit Batch Name</h2>
               <button
                 onClick={() => {
                   setShowEditBatchModal(false);
                   setEditingBatch(null);
                   setEditBatchName('');
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                   Batch Name
                 </label>
                 <input
@@ -1378,20 +1482,20 @@ export default function SyllabusPage() {
                   type="text"
                   value={editBatchName}
                   onChange={(e) => setEditBatchName(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter batch name"
                 />
                 <p className="text-xs text-gray-500 mt-1">Press Enter to save or Escape to cancel</p>
               </div>
 
               {error && (
-                <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-                  <p className="text-sm text-red-700">{error}</p>
+                <div className="flex gap-2 p-2 sm:p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm text-red-700">{error}</p>
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-2 sm:gap-3 pt-3 sm:pt-4">
                 <button
                   onClick={() => {
                     setShowEditBatchModal(false);
@@ -1399,13 +1503,13 @@ export default function SyllabusPage() {
                     setEditBatchName('');
                     setError(null);
                   }}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
+                  className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleEditBatch}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                  className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
                 >
                   Save
                 </button>
@@ -1417,25 +1521,25 @@ export default function SyllabusPage() {
 
       {/* Edit Course Name Modal */}
       {showEditCourseModal && editingCourse && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Edit Course Name</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-lg shadow-xl max-w-sm w-full">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900">Edit Course Name</h2>
               <button
                 onClick={() => {
                   setShowEditCourseModal(false);
                   setEditingCourse(null);
                   setEditCourseName('');
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                   Course Name
                 </label>
                 <input
@@ -1443,20 +1547,20 @@ export default function SyllabusPage() {
                   type="text"
                   value={editCourseName}
                   onChange={(e) => setEditCourseName(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter course name"
                 />
                 <p className="text-xs text-gray-500 mt-1">Press Enter to save or Escape to cancel</p>
               </div>
 
               {error && (
-                <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-                  <p className="text-sm text-red-700">{error}</p>
+                <div className="flex gap-2 p-2 sm:p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm text-red-700">{error}</p>
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-2 sm:gap-3 pt-3 sm:pt-4">
                 <button
                   onClick={() => {
                     setShowEditCourseModal(false);
@@ -1464,13 +1568,13 @@ export default function SyllabusPage() {
                     setEditCourseName('');
                     setError(null);
                   }}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
+                  className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleEditCourse}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                  className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
                 >
                   Save
                 </button>
@@ -1482,10 +1586,10 @@ export default function SyllabusPage() {
 
       {/* Edit Subject/Topic/Subtopic Modal */}
       {showEditSubjectModal && editingItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-black">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 p-2 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-lg shadow-xl max-w-sm w-full">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-base sm:text-lg font-semibold text-black">
                 Edit {editingItem.type.charAt(0).toUpperCase() + editingItem.type.slice(1)} Name
               </h2>
               <button
@@ -1494,15 +1598,15 @@ export default function SyllabusPage() {
                   setEditingItem(null);
                   setEditItemName('');
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-black mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-black mb-1 sm:mb-2">
                   {editingItem.type.charAt(0).toUpperCase() + editingItem.type.slice(1)} Name
                 </label>
                 <input
@@ -1510,20 +1614,20 @@ export default function SyllabusPage() {
                   type="text"
                   value={editItemName}
                   onChange={(e) => setEditItemName(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder={`Enter ${editingItem.type} name`}
                 />
                 <p className="text-xs text-gray-500 mt-1">Press Enter to save or Escape to cancel</p>
               </div>
 
               {error && (
-                <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-                  <p className="text-sm text-red-700">{error}</p>
+                <div className="flex gap-2 p-2 sm:p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm text-red-700">{error}</p>
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-2 sm:gap-3 pt-3 sm:pt-4">
                 <button
                   onClick={() => {
                     setShowEditSubjectModal(false);
@@ -1531,12 +1635,35 @@ export default function SyllabusPage() {
                     setEditItemName('');
                     setError(null);
                   }}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
+                  className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleEditSyllabusItem}
+                  onClick={() => {
+                    if (showSyllabusDetailModal && editingItem) {
+                      // Modal context handlers
+                      if (editingItem.type === 'topic') {
+                        handleModalEditTopic(
+                          selectedSubjectInModal || '',
+                          editingItem.name,
+                          editItemName
+                        );
+                      } else if (editingItem.type === 'subtopic') {
+                        handleModalEditItem(
+                          editingItem.itemId,
+                          selectedSubjectInModal || '',
+                          selectedTopicInModal || '',
+                          editItemName
+                        );
+                      } else if (editingItem.type === 'subject') {
+                        handleModalEditSubject(editingItem.name, editItemName);
+                      }
+                    } else {
+                      // Old context handler
+                      handleEditSyllabusItem();
+                    }
+                  }}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
                 >
                   Save
@@ -1549,25 +1676,25 @@ export default function SyllabusPage() {
 
       {/* Edit Academic Year Modal */}
       {showEditAcademicYearModal && editingAcademicYear && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-black">Edit Academic Year</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-lg shadow-xl max-w-sm w-full">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-base sm:text-lg font-semibold text-black">Edit Academic Year</h2>
               <button
                 onClick={() => {
                   setShowEditAcademicYearModal(false);
                   setEditingAcademicYear(null);
                   setEditAcademicYearValue('');
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-black mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-black mb-1 sm:mb-2">
                   Academic Year
                 </label>
                 <input
@@ -1575,20 +1702,20 @@ export default function SyllabusPage() {
                   type="text"
                   value={editAcademicYearValue}
                   onChange={(e) => setEditAcademicYearValue(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="e.g., 2024-2025"
                 />
                 <p className="text-xs text-gray-500 mt-1">Press Enter to save or Escape to cancel</p>
               </div>
 
               {error && (
-                <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-                  <p className="text-sm text-red-700">{error}</p>
+                <div className="flex gap-2 p-2 sm:p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm text-red-700">{error}</p>
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-2 sm:gap-3 pt-3 sm:pt-4">
                 <button
                   onClick={() => {
                     setShowEditAcademicYearModal(false);
@@ -1596,13 +1723,13 @@ export default function SyllabusPage() {
                     setEditAcademicYearValue('');
                     setError(null);
                   }}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
+                  className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleEditAcademicYear}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                  className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
                 >
                   Save
                 </button>
@@ -1610,6 +1737,412 @@ export default function SyllabusPage() {
             </div>
           </div>
         </div>
-      )}    </ProtectedRoute>
+      )}
+
+      {/* Syllabus Detail Modal - 3 Column Layout */}
+      {showSyllabusDetailModal && selectedSyllabusData && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full h-[95vh] sm:h-[92vh] max-w-sm sm:max-w-2xl lg:max-w-7xl overflow-hidden flex flex-col">
+            {/* Header - Top Bar with Cancel and Save Buttons */}
+            <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 lg:py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg sm:text-2xl lg:text-3xl font-bold text-gray-900 truncate">{selectedSyllabusData.courseName}</h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1">Configure subjects, chapters, and specific topics.</p>
+              </div>
+              <div className="flex gap-2 sm:gap-3 shrink-0">
+                <button
+                  onClick={() => {
+                    setShowSyllabusDetailModal(false);
+                    setSelectedSyllabusData(null);
+                    setSelectedSubjectInModal(null);
+                    setSelectedTopicInModal(null);
+                  }}
+                  className="px-3 sm:px-6 py-2 sm:py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-medium sm:font-semibold transition text-sm sm:text-base"
+                >
+                  Cancel
+                </button>
+                <button className="px-3 sm:px-6 py-2 sm:py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium sm:font-semibold transition shadow-md text-sm sm:text-base" onClick={() => {
+                    setShowSyllabusDetailModal(false);
+                    setSelectedSyllabusData(null);
+                    setSelectedSubjectInModal(null);
+                    setSelectedTopicInModal(null);
+                  }}>
+                  Save Changes
+                </button>
+              </div>
+            </div>
+
+            {/* 3-Column Layout Container */}
+            <div className="flex-1 overflow-hidden flex flex-col lg:flex-row bg-gray-50 min-h-0">
+              {/* Column 1: Subjects */}
+              <div className="w-full lg:flex-1 lg:overflow-hidden flex flex-col border-b border-gray-300 lg:border-b-0 lg:border-r min-h-0">
+                {/* Column Header */}
+                <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-blue-600 rounded-sm flex items-center justify-center">
+                      <span className="text-white text-xs sm:text-sm font-bold">1</span>
+                    </div>
+                    <h3 className="text-sm sm:text-lg font-bold text-gray-900">Subjects</h3>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAddingItem({
+                        syllabusId: selectedSyllabusData.syllabusId,
+                        level: 'batch',
+                      });
+                      setNewItem({
+                        subject: '',
+                        topic: '',
+                        subtopic: '',
+                        description: '',
+                        duration_hours: 1,
+                      });
+                    }}
+                    className="p-1.5 sm:p-2 text-lg text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                    title="Add Subject"
+                  >
+                    <Plus size={20} />
+                  </button>
+                </div>
+
+                {/* Subjects List */}
+                <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-1 sm:space-y-2">
+                  {Object.keys(selectedSyllabusData.subjects).length === 0 ? (
+                    <p className="text-xs sm:text-sm text-gray-500 text-center py-8">No subjects yet</p>
+                  ) : (
+                    Object.keys(selectedSyllabusData.subjects).map((subject) => (
+                      <div
+                        key={subject}
+                        onClick={() => {
+                          setSelectedSubjectInModal(subject);
+                          setSelectedTopicInModal(null);
+                        }}
+                        className={`p-2 sm:p-4 rounded-lg cursor-pointer transition group border-l-4 ${
+                          selectedSubjectInModal === subject
+                            ? 'bg-blue-50 border-l-blue-600 shadow-sm'
+                            : 'bg-white border-l-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`font-bold text-xs sm:text-base truncate ${
+                            selectedSubjectInModal === subject
+                              ? 'text-blue-600'
+                              : 'text-gray-900'
+                          }`}>
+                            {subject}
+                          </p>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingItem({
+                                  syllabusId: selectedSyllabusData.syllabusId,
+                                  itemId: `subject-${subject}`,
+                                  name: subject,
+                                  type: 'subject',
+                                });
+                                setEditItemName(subject);
+                                setShowEditSubjectModal(true);
+                              }}
+                              className="p-1 text-blue-600 hover:bg-blue-100 rounded-lg transition flex-shrink-0"
+                              title="Edit Subject"
+                            >
+                              <Edit size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Delete subject "${subject}" and all its chapters and topics?`)) {
+                                  // Update local state immediately
+                                  const updatedSubjects = JSON.parse(JSON.stringify(selectedSyllabusData.subjects));
+                                  delete updatedSubjects[subject];
+
+                                  setSelectedSyllabusData({
+                                    ...selectedSyllabusData,
+                                    subjects: updatedSubjects,
+                                  });
+
+                                  if (selectedSubjectInModal === subject) {
+                                    setSelectedSubjectInModal(null);
+                                    setSelectedTopicInModal(null);
+                                  }
+
+                                  // Get all items for this subject to delete them
+                                  const itemsToDelete = syllabi
+                                    .find((s) => s._id === selectedSyllabusData.syllabusId)
+                                    ?.items.filter((item) => item.subject === subject) || [];
+
+                                  // Delete all items in background and refresh
+                                  (async () => {
+                                    try {
+                                      for (const item of itemsToDelete) {
+                                        await fetch(
+                                          `${API_BASE}/api/syllabus/${selectedSyllabusData.syllabusId}/items/${item._id}`,
+                                          {
+                                            method: 'DELETE',
+                                            credentials: 'include',
+                                          }
+                                        );
+                                      }
+                                      showToast('Subject deleted successfully', 'success');
+                                      await fetchSyllabi();
+                                    } catch (err: unknown) {
+                                      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+                                      setError(`Error: ${errorMessage}`);
+                                      showToast(`Error: ${errorMessage}`, 'error');
+                                      await fetchSyllabi();
+                                    }
+                                  })();
+                                }
+                              }}
+                              className="p-1 text-red-600 hover:bg-red-100 rounded-lg transition flex-shrink-0"
+                              title="Delete Subject"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Column 2: Chapters (Topics) */}
+              <div className="w-full lg:flex-1 lg:overflow-hidden flex flex-col border-b border-gray-300 lg:border-b-0 lg:border-r min-h-0">
+                {/* Column Header */}
+                <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-purple-600 rounded-sm flex items-center justify-center">
+                      <span className="text-white text-xs sm:text-sm font-bold">2</span>
+                    </div>
+                    <h3 className="text-sm sm:text-lg font-bold text-gray-900">Chapters</h3>
+                  </div>
+                  {selectedSubjectInModal && (
+                    <button
+                      onClick={() => {
+                        setAddingItem({
+                          syllabusId: selectedSyllabusData.syllabusId,
+                          level: 'subject',
+                          subject: selectedSubjectInModal,
+                        });
+                        setNewItem({
+                          subject: selectedSubjectInModal,
+                          topic: '',
+                          subtopic: '',
+                          description: '',
+                          duration_hours: 1,
+                        });
+                      }}
+                      className="p-1.5 sm:p-2 text-lg text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                      title="Add Chapter"
+                    >
+                      <Plus size={20} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Chapters List */}
+                <div className="flex-1 overflow-y-auto p-2 sm:p-4">
+                  {!selectedSubjectInModal ? (
+                    <p className="text-xs sm:text-sm text-gray-500 text-center py-8">Select a subject to view chapters</p>
+                  ) : (
+                    <div className="space-y-1 sm:space-y-2">
+                      {Object.keys(selectedSyllabusData.subjects[selectedSubjectInModal]?.topics || {})
+                        .length === 0 ? (
+                        <p className="text-xs sm:text-sm text-gray-500 text-center py-8">No chapters yet</p>
+                      ) : (
+                        Object.keys(selectedSyllabusData.subjects[selectedSubjectInModal].topics).map(
+                          (topic, idx) => (
+                            <div
+                              key={topic}
+                              onClick={() => setSelectedTopicInModal(topic)}
+                              className={`p-2 sm:p-4 rounded-lg cursor-pointer transition group border-l-4 ${
+                                selectedTopicInModal === topic
+                                  ? 'bg-purple-50 border-l-purple-600 shadow-sm'
+                                  : 'bg-white border-l-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-purple-700 tracking-wide">
+                                    CHAPTER {String(idx + 1).padStart(2, '0')}
+                                  </p>
+                                  <p className="font-bold text-gray-900 mt-1 truncate text-xs sm:text-base">{topic}</p>
+                                </div>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingItem({
+                                        syllabusId: selectedSyllabusData.syllabusId,
+                                        itemId: `topic-${topic}`,
+                                        name: topic,
+                                        type: 'topic',
+                                      });
+                                      setEditItemName(topic);
+                                      setShowEditSubjectModal(true);
+                                    }}
+                                    className="p-1 text-blue-600 hover:bg-blue-100 rounded-lg transition flex-shrink-0"
+                                    title="Edit Chapter"
+                                  >
+                                    <Edit size={14} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleModalDeleteTopic(selectedSubjectInModal, topic);
+                                    }}
+                                    className="p-1 text-red-600 hover:bg-red-100 rounded-lg transition flex-shrink-0"
+                                    title="Delete Chapter"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Column 3: Topics/Items */}
+              <div className="w-full lg:flex-1 lg:overflow-hidden flex flex-col min-h-0">
+                {/* Column Header */}
+                <div className="bg-white border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-blue-600 rounded-sm flex items-center justify-center">
+                      <span className="text-white text-xs sm:text-sm font-bold">3</span>
+                    </div>
+                    <h3 className="text-sm sm:text-lg font-bold text-gray-900">Topics</h3>
+                  </div>
+                  {selectedSubjectInModal && selectedTopicInModal && (
+                    <button
+                      onClick={() => {
+                        setAddingItem({
+                          syllabusId: selectedSyllabusData.syllabusId,
+                          level: 'topic',
+                          subject: selectedSubjectInModal,
+                          topic: selectedTopicInModal,
+                        });
+                        setNewItem({
+                          subject: selectedSubjectInModal,
+                          topic: selectedTopicInModal,
+                          subtopic: '',
+                          description: '',
+                          duration_hours: 1,
+                        });
+                      }}
+                      className="p-1.5 sm:p-2 text-lg text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                      title="Add Topic"
+                    >
+                      <Plus size={20} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Topics List */}
+                <div className="flex-1 overflow-y-auto p-2 sm:p-4">
+                  {!selectedSubjectInModal || !selectedTopicInModal ? (
+                    <p className="text-xs sm:text-sm text-gray-500 text-center py-8">
+                      Select a subject and chapter to view topics
+                    </p>
+                  ) : (
+                    <div className="space-y-1 sm:space-y-2">
+                      {(selectedSyllabusData.subjects[selectedSubjectInModal]?.topics[
+                        selectedTopicInModal
+                      ] || []).length === 0 ? (
+                        <p className="text-xs sm:text-sm text-gray-500 text-center py-8">No topics yet</p>
+                      ) : (
+                        (
+                          selectedSyllabusData.subjects[selectedSubjectInModal].topics[
+                            selectedTopicInModal
+                          ] || []
+                        ).map((item, idx) => (
+                          <div
+                            key={item._id}
+                            className="bg-white border border-gray-300 rounded-lg p-2 sm:p-4 group hover:shadow-md transition"
+                          >
+                            <div className="flex items-start justify-between gap-2 sm:gap-3">
+                              <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+                                <span className="font-bold text-gray-800 bg-gray-100 px-2 sm:px-3 py-1 rounded text-xs sm:text-sm min-w-fit">
+                                  {String(idx + 1).padStart(2, '0')}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-gray-900 text-xs sm:text-base break-words">
+                                    {item.subtopic || 'Untitled Topic'}
+                                  </p>
+                                  {item.description && (
+                                    <p className="text-xs text-gray-600 mt-1 break-words">
+                                      {item.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingItem({
+                                      syllabusId: selectedSyllabusData.syllabusId,
+                                      itemId: item._id,
+                                      name: item.subtopic || '',
+                                      type: 'subtopic',
+                                    });
+                                    setEditItemName(item.subtopic || '');
+                                    setShowEditSubjectModal(true);
+                                  }}
+                                  className="p-1 text-blue-600 hover:bg-blue-100 rounded-lg transition flex-shrink-0"
+                                  title="Edit Topic"
+                                >
+                                  <Edit size={14} />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleModalDeleteItem(
+                                      item._id,
+                                      selectedSubjectInModal,
+                                      selectedTopicInModal
+                                    );
+                                  }}
+                                  className="p-1 text-red-600 hover:bg-red-100 rounded-lg transition flex-shrink-0"
+                                  title="Delete Topic"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notifications */}
+      <div className="fixed top-6 right-6 z-[9999] space-y-3">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`px-5 py-3 rounded-lg shadow-lg text-white text-sm font-medium animate-in fade-in slide-in-from-top-5 duration-300 ${
+              toast.type === 'success' ? 'bg-green-500' :
+              toast.type === 'error' ? 'bg-red-500' :
+              'bg-blue-500'
+            }`}
+          >
+            {toast.message}
+          </div>
+        ))}
+      </div>
+    </ProtectedRoute>
   );
 }
