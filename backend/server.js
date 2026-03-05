@@ -7,6 +7,7 @@ import cookieParser from "cookie-parser";
 import { upload } from "./middleware/upload.js";
 import { uploadReceipt } from "./middleware/uploadReceipt.js";
 import { verifyAuth } from "./middlewares/jwtAuth.js";
+import { verifyPermission } from "./middlewares/permissionAuth.js";
 import path from "path";
 
 dotenv.config();
@@ -92,129 +93,136 @@ import branchesRouter from "./routes/branches.js";
 
 // ===== LECTURE TEMPLATE ROUTE (must be before router mount) =====
 // Download Lecture template
-app.get("/api/lectures/template", async (req, res) => {
-  console.log("📥 Lecture template download requested");
+app.get(
+  "/api/lectures/template",
+  verifyAuth,
+  verifyPermission("canUploadMaterials"),
+  async (req, res) => {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Lectures");
 
-  try {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Lectures");
+      worksheet.columns = [
+        { header: "Course Name *", key: "course_name", width: 25 },
+        { header: "Batch Name *", key: "batch_name", width: 25 },
+        { header: "Subject *", key: "subject", width: 20 },
+        { header: "Teacher First Name *", key: "teacher_fname", width: 20 },
+        { header: "Teacher Last Name *", key: "teacher_lname", width: 20 },
+        { header: "Date (DD/MM/YYYY) *", key: "date", width: 18 },
+        { header: "Start Time (HH:MM) *", key: "start_time", width: 18 },
+        { header: "End Time (HH:MM) *", key: "end_time", width: 18 },
+        { header: "Topic *", key: "topic", width: 30 },
+        { header: "Subtopic", key: "subtopic", width: 30 },
+        { header: "Note", key: "note", width: 40 },
+        { header: "Status", key: "status", width: 15 },
+      ];
 
-    worksheet.columns = [
-      { header: "Course Name *", key: "course_name", width: 25 },
-      { header: "Batch Name *", key: "batch_name", width: 25 },
-      { header: "Subject *", key: "subject", width: 20 },
-      { header: "Teacher First Name *", key: "teacher_fname", width: 20 },
-      { header: "Teacher Last Name *", key: "teacher_lname", width: 20 },
-      { header: "Date (DD/MM/YYYY) *", key: "date", width: 18 },
-      { header: "Start Time (HH:MM) *", key: "start_time", width: 18 },
-      { header: "End Time (HH:MM) *", key: "end_time", width: 18 },
-      { header: "Topic *", key: "topic", width: 30 },
-      { header: "Subtopic", key: "subtopic", width: 30 },
-      { header: "Note", key: "note", width: 40 },
-      { header: "Status", key: "status", width: 15 },
-    ];
+      // Add sample row
+      worksheet.addRow({
+        course_name: "Mathematics",
+        batch_name: "Batch A",
+        subject: "Mathematics",
+        teacher_fname: "John",
+        teacher_lname: "Doe",
+        date: "20/10/2025",
+        start_time: "10:00",
+        end_time: "11:30",
+        topic: "Calculus - Derivatives",
+        subtopic: "Chain Rule and Product Rule",
+        note: "Bring calculator and textbook",
+        status: "scheduled",
+      });
 
-    // Add sample row
-    worksheet.addRow({
-      course_name: "Mathematics",
-      batch_name: "Batch A",
-      subject: "Mathematics",
-      teacher_fname: "John",
-      teacher_lname: "Doe",
-      date: "20/10/2025",
-      start_time: "10:00",
-      end_time: "11:30",
-      topic: "Calculus - Derivatives",
-      subtopic: "Chain Rule and Product Rule",
-      note: "Bring calculator and textbook",
-      status: "scheduled",
-    });
+      // Add a second example
+      worksheet.addRow({
+        course_name: "Physics",
+        batch_name: "Batch B",
+        subject: "Physics",
+        teacher_fname: "Jane",
+        teacher_lname: "Smith",
+        date: "22/10/2025",
+        start_time: "14:00",
+        end_time: "15:30",
+        topic: "Mechanics - Laws of Motion",
+        subtopic: "Newton's Laws",
+        note: "Revise chapter 5",
+        status: "scheduled",
+      });
 
-    // Add a second example
-    worksheet.addRow({
-      course_name: "Physics",
-      batch_name: "Batch B",
-      subject: "Physics",
-      teacher_fname: "Jane",
-      teacher_lname: "Smith",
-      date: "22/10/2025",
-      start_time: "14:00",
-      end_time: "15:30",
-      topic: "Mechanics - Laws of Motion",
-      subtopic: "Newton's Laws",
-      note: "Revise chapter 5",
-      status: "scheduled",
-    });
+      // Style header row
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE0E0E0" },
+      };
 
-    // Style header row
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    };
+      // Add notes sheet
+      const notesSheet = workbook.addWorksheet("Instructions");
+      notesSheet.getCell("A1").value = "INSTRUCTIONS FOR BULK LECTURE UPLOAD";
+      notesSheet.getCell("A1").font = { bold: true, size: 14 };
 
-    // Add notes sheet
-    const notesSheet = workbook.addWorksheet("Instructions");
-    notesSheet.getCell("A1").value = "INSTRUCTIONS FOR BULK LECTURE UPLOAD";
-    notesSheet.getCell("A1").font = { bold: true, size: 14 };
+      notesSheet.getCell("A3").value = "Required Fields (marked with *):";
+      notesSheet.getCell("A3").font = { bold: true };
 
-    notesSheet.getCell("A3").value = "Required Fields (marked with *):";
-    notesSheet.getCell("A3").font = { bold: true };
+      notesSheet.getCell("A4").value =
+        "• Course Name: Must exactly match a course name";
+      notesSheet.getCell("A5").value =
+        "• Batch Name: Must exactly match a batch under the course";
+      notesSheet.getCell("A6").value = "• Subject: Name of the subject";
+      notesSheet.getCell("A7").value =
+        "• Teacher First Name: First name of the teacher";
+      notesSheet.getCell("A8").value =
+        "• Teacher Last Name: Last name of the teacher";
+      notesSheet.getCell("A9").value =
+        "• Date: Format DD/MM/YYYY (e.g., 20/10/2025)";
+      notesSheet.getCell("A10").value =
+        "• Start/End Time: Format HH:MM (24-hour clock)";
+      notesSheet.getCell("A11").value = "• Topic: Lecture topic or title";
+      notesSheet.getCell("A12").value =
+        "• Total Marks: Number of marks (e.g., 100)";
 
-    notesSheet.getCell("A4").value =
-      "• Course Name: Must exactly match a course name";
-    notesSheet.getCell("A5").value =
-      "• Batch Name: Must exactly match a batch under the course";
-    notesSheet.getCell("A6").value = "• Subject: Name of the subject";
-    notesSheet.getCell("A7").value =
-      "• Teacher First Name: First name of the teacher";
-    notesSheet.getCell("A8").value =
-      "• Teacher Last Name: Last name of the teacher";
-    notesSheet.getCell("A9").value =
-      "• Date: Format DD/MM/YYYY (e.g., 20/10/2025)";
-    notesSheet.getCell("A10").value =
-      "• Start/End Time: Format HH:MM (24-hour clock)";
-    notesSheet.getCell("A11").value = "• Topic: Lecture topic or title";
-    notesSheet.getCell("A12").value =
-      "• Total Marks: Number of marks (e.g., 100)";
+      notesSheet.getCell("A13").value = "Optional Fields:";
+      notesSheet.getCell("A13").font = { bold: true };
+      notesSheet.getCell("A14").value =
+        "• Exam Link: Required only for online exams (on_theory, on_mcq)";
 
-    notesSheet.getCell("A13").value = "Optional Fields:";
-    notesSheet.getCell("A13").font = { bold: true };
-    notesSheet.getCell("A14").value =
-      "• Exam Link: Required only for online exams (on_theory, on_mcq)";
+      notesSheet.getCell("A16").value = "Valid Exam Types:";
+      notesSheet.getCell("A16").font = { bold: true };
+      notesSheet.getCell("A17").value = "• on_theory = Online Theory Exam";
+      notesSheet.getCell("A18").value = "• off_theory = Offline Theory Exam";
+      notesSheet.getCell("A19").value = "• on_mcq = Online MCQ Exam";
+      notesSheet.getCell("A20").value = "• off_mcq = Offline MCQ Exam";
 
-    notesSheet.getCell("A16").value = "Valid Exam Types:";
-    notesSheet.getCell("A16").font = { bold: true };
-    notesSheet.getCell("A17").value = "• on_theory = Online Theory Exam";
-    notesSheet.getCell("A18").value = "• off_theory = Offline Theory Exam";
-    notesSheet.getCell("A19").value = "• on_mcq = Online MCQ Exam";
-    notesSheet.getCell("A20").value = "• off_mcq = Offline MCQ Exam";
+      notesSheet.getColumn("A").width = 80;
 
-    notesSheet.getColumn("A").width = 80;
+      const buffer = await workbook.xlsx.writeBuffer();
 
-    const buffer = await workbook.xlsx.writeBuffer();
+      console.log(
+        "✅ Lecture template generated, size:",
+        buffer.length,
+        "bytes",
+      );
 
-    console.log("✅ Lecture template generated, size:", buffer.length, "bytes");
-
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="lecture_template.xlsx"',
-    );
-    res.send(buffer);
-  } catch (error) {
-    console.error("❌ Lecture template generation error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to generate template",
-      error: error.message,
-    });
-  }
-});
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="lecture_template.xlsx"',
+      );
+      res.send(buffer);
+    } catch (error) {
+      console.error("❌ Lecture template generation error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate template",
+        error: error.message,
+      });
+    }
+  },
+);
 
 // ===== MOUNT ROUTERS =====
 app.use("/auth", authRouter);
@@ -233,162 +241,187 @@ app.use("/api/branches", branchesRouter);
 // ===== FEE PLANS ROUTES =====
 
 // Get fee plans list
-app.get("/api/fee-plans", verifyAuth, async (req, res) => {
-  try {
-    const { batch_id } = req.query;
-    const filter = batch_id ? { batch_id } : {};
+app.get(
+  "/api/fee-plans",
+  verifyAuth,
+  verifyPermission("canViewAccounts"),
+  async (req, res) => {
+    try {
+      const { batch_id } = req.query;
+      const filter = batch_id ? { batch_id } : {};
 
-    // Add branch filter
-    const isSuperAdmin = req.user?.isSuperAdmin;
-    const branchId = req.headers["x-branch-id"];
+      // Add branch filter
+      const isSuperAdmin = req.user?.isSuperAdmin;
+      const branchId = req.headers["x-branch-id"];
 
-    if (branchId) {
-      filter.branchId = branchId;
-    } else if (!isSuperAdmin) {
-      // Fallback to user's primary branch if not specified and not super admin
-      if (req.user?.primaryBranch) {
-        filter.branchId = req.user.primaryBranch;
+      if (branchId) {
+        filter.branchId = branchId;
+      } else if (!isSuperAdmin) {
+        // Fallback to user's primary branch if not specified and not super admin
+        if (req.user?.primaryBranch) {
+          filter.branchId = req.user.primaryBranch;
+        }
       }
-    }
 
-    const plans = await FeePlan.find(filter)
-      .populate({
+      const plans = await FeePlan.find(filter)
+        .populate({
+          path: "batch_id",
+          select: "name course_id",
+          populate: { path: "course_id", select: "name" },
+        })
+        .populate("course_id", "name")
+        .sort({ created_at: -1 });
+      res.json({ success: true, plans });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
+
+// Create fee plan
+app.post(
+  "/api/fee-plans",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      console.log(
+        "📝 Creating fee plan with data:",
+        JSON.stringify(req.body, null, 2),
+      );
+
+      const {
+        batch_id,
+        course_id,
+        total_amount,
+        num_installments,
+        discount_types,
+        is_default,
+        installments,
+      } = req.body;
+
+      // Validate required fields
+      if (!batch_id || !total_amount || !num_installments) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Missing required fields: batch_id, total_amount, num_installments",
+        });
+      }
+
+      // Get branchId from context
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+      if (!branchId) {
+        return res.status(400).json({
+          success: false,
+          message: "Branch ID is required",
+        });
+      }
+
+      // Build plan data
+      const planData = {
+        branchId,
+        batch_id,
+        total_amount: Number(total_amount),
+        num_installments: Number(num_installments),
+      };
+
+      // Add optional fields
+      if (course_id) planData.course_id = course_id;
+      if (discount_types && Array.isArray(discount_types))
+        planData.discount_types = discount_types;
+      if (typeof is_default === "boolean") planData.is_default = is_default;
+
+      console.log(
+        "💾 Saving plan with data:",
+        JSON.stringify(planData, null, 2),
+      );
+
+      const plan = new FeePlan(planData);
+      await plan.save();
+
+      console.log(
+        `✅ Fee plan created with ${planData.num_installments} installments (calculated dynamically)`,
+      );
+
+      // Populate and return
+      const populated = await FeePlan.findById(plan._id).populate({
         path: "batch_id",
         select: "name course_id",
         populate: { path: "course_id", select: "name" },
-      })
-      .populate("course_id", "name")
-      .sort({ created_at: -1 });
-    res.json({ success: true, plans });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
-
-// Create fee plan
-app.post("/api/fee-plans", verifyAuth, async (req, res) => {
-  try {
-    console.log(
-      "📝 Creating fee plan with data:",
-      JSON.stringify(req.body, null, 2),
-    );
-
-    const {
-      batch_id,
-      course_id,
-      total_amount,
-      num_installments,
-      discount_types,
-      is_default,
-      installments,
-    } = req.body;
-
-    // Validate required fields
-    if (!batch_id || !total_amount || !num_installments) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Missing required fields: batch_id, total_amount, num_installments",
       });
+
+      console.log("✅ Fee plan created successfully");
+      res.status(201).json({ success: true, plan: populated });
+    } catch (err) {
+      console.error("❌ Error creating fee plan:", err.message);
+      console.error("Full error:", err);
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    // Get branchId from context
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
-    if (!branchId) {
-      return res.status(400).json({
-        success: false,
-        message: "Branch ID is required",
-      });
-    }
-
-    // Build plan data
-    const planData = {
-      branchId,
-      batch_id,
-      total_amount: Number(total_amount),
-      num_installments: Number(num_installments),
-    };
-
-    // Add optional fields
-    if (course_id) planData.course_id = course_id;
-    if (discount_types && Array.isArray(discount_types))
-      planData.discount_types = discount_types;
-    if (typeof is_default === "boolean") planData.is_default = is_default;
-
-    console.log("💾 Saving plan with data:", JSON.stringify(planData, null, 2));
-
-    const plan = new FeePlan(planData);
-    await plan.save();
-
-    console.log(
-      `✅ Fee plan created with ${planData.num_installments} installments (calculated dynamically)`,
-    );
-
-    // Populate and return
-    const populated = await FeePlan.findById(plan._id).populate({
-      path: "batch_id",
-      select: "name course_id",
-      populate: { path: "course_id", select: "name" },
-    });
-
-    console.log("✅ Fee plan created successfully");
-    res.status(201).json({ success: true, plan: populated });
-  } catch (err) {
-    console.error("❌ Error creating fee plan:", err.message);
-    console.error("Full error:", err);
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Update fee plan
-app.put("/api/fee-plans/:id", verifyAuth, async (req, res) => {
-  try {
-    const update = { ...req.body, updated_at: new Date() };
+app.put(
+  "/api/fee-plans/:id",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      const update = { ...req.body, updated_at: new Date() };
 
-    // Verify user has access to this fee plan's branch
-    const existingPlan = await FeePlan.findById(req.params.id);
-    if (!existingPlan) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Plan not found" });
+      // Verify user has access to this fee plan's branch
+      const existingPlan = await FeePlan.findById(req.params.id);
+      if (!existingPlan) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Plan not found" });
+      }
+
+      const isSuperAdmin = req.user?.isSuperAdmin;
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+
+      if (!isSuperAdmin && String(existingPlan.branchId) !== String(branchId)) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Access denied" });
+      }
+
+      const plan = await FeePlan.findByIdAndUpdate(req.params.id, update, {
+        new: true,
+        runValidators: true,
+      }).populate({
+        path: "batch_id",
+        select: "name course_id",
+        populate: { path: "course_id", select: "name" },
+      });
+      if (!plan)
+        return res
+          .status(404)
+          .json({ success: false, message: "Plan not found" });
+      res.json({ success: true, plan });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    const isSuperAdmin = req.user?.isSuperAdmin;
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
-
-    if (!isSuperAdmin && String(existingPlan.branchId) !== String(branchId)) {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    const plan = await FeePlan.findByIdAndUpdate(req.params.id, update, {
-      new: true,
-      runValidators: true,
-    }).populate({
-      path: "batch_id",
-      select: "name course_id",
-      populate: { path: "course_id", select: "name" },
-    });
-    if (!plan)
-      return res
-        .status(404)
-        .json({ success: false, message: "Plan not found" });
-    res.json({ success: true, plan });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Delete fee plan and its installments
-app.delete("/api/fee-plans/:id", verifyAuth, async (req, res) => {
-  try {
-    const id = req.params.id;
-    await FeeInstallment.deleteMany({ plan_id: id });
-    await FeePlan.findByIdAndDelete(id);
-    res.json({ success: true, message: "Fee plan deleted" });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.delete(
+  "/api/fee-plans/:id",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      const id = req.params.id;
+      await FeeInstallment.deleteMany({ plan_id: id });
+      await FeePlan.findByIdAndDelete(id);
+      res.json({ success: true, message: "Fee plan deleted" });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== Health Check =====
 app.get("/", (req, res) => {
@@ -706,514 +739,588 @@ function parseExcelDate(input) {
 
 // ===== Batches API Routes =====
 // GET /api/batches with pagination, supports archived filter
-app.get("/api/batches", verifyAuth, async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    const archivedParam = String(req.query.archived || "false").toLowerCase();
-    const isArchivedReq = archivedParam === "true" || archivedParam === "1";
-    const query = isArchivedReq
-      ? { $or: [{ isArchived: true }, { archived: true }] }
-      : {
-          $and: [
-            {
-              $or: [
-                { isArchived: { $ne: true } },
-                { isArchived: { $exists: false } },
-              ],
-            },
-            {
-              $or: [
-                { archived: { $ne: true } },
-                { archived: { $exists: false } },
-              ],
-            },
-          ],
-        };
-
-    // Add branch filter
-    const isSuperAdmin = req.user?.isSuperAdmin;
-    const branchId = req.headers["x-branch-id"];
-
-    if (branchId) {
-      query.branchId = branchId;
-    } else if (!isSuperAdmin && req.user?.primaryBranch) {
-      query.branchId = req.user.primaryBranch;
-    }
-
-    const total = await Batches.countDocuments(query);
-    const batchesRaw = await Batches.find(query)
-      .populate("course_id", "name course_fee gst_percent")
-      .populate("teacher_id", "fname lname")
-      .skip(skip)
-      .limit(limit);
-
-    // Enrich with dynamic metrics: students_count, fees_collected, total_fees
-    const enriched = await Promise.all(
-      batchesRaw.map(async (b) => {
-        const batchId = b._id;
-        const courseId = b?.course_id?._id || b?.course_id;
-        const round2 = (n) => Math.round((n || 0) * 100) / 100;
-
-        // Count students in this batch and course
-        const studentFilter = { batch_id: batchId };
-        if (courseId) studentFilter["course_id"] = courseId;
-        const students = await Student.find(studentFilter).lean();
-        const studentIds = students.map((s) => s._id);
-        const students_count = students.length;
-
-        // Calculate total fees for all students with discounts + GST
-        // Workflow: For EACH student: base_fee -> apply their discount -> add GST
-        let total_fees = 0;
-        const feePlan = await FeePlan.findOne({ batch_id: batchId }).lean();
-        const gstPercent = b?.course_id?.gst_percent || 0;
-
-        if (feePlan && feePlan.total_amount) {
-          // For each student, calculate: (base - discount) + GST
-          for (const student of students) {
-            let studentFee = feePlan.total_amount; // Base fee
-
-            // Step 1: Apply student's discount
-            if (
-              student.discount_type &&
-              feePlan.discount_types &&
-              Array.isArray(feePlan.discount_types)
-            ) {
-              const discountObj = feePlan.discount_types.find(
-                (d) => d.code === student.discount_type,
-              );
-              if (discountObj && discountObj.discount_percent) {
-                const discountAmount =
-                  studentFee * (discountObj.discount_percent / 100);
-                studentFee = studentFee - discountAmount;
-              }
-            }
-
-            // Step 2: Add GST on discounted amount
-            if (gstPercent > 0) {
-              const gstAmount = studentFee * (gstPercent / 100);
-              studentFee = studentFee + gstAmount;
-            }
-
-            total_fees += studentFee;
-          }
-        } else {
-          // Fallback: use course fee + GST if no fee plan
-          const courseFee = b?.course_id?.course_fee || 0;
-          const feeWithGst = courseFee * (1 + gstPercent / 100);
-          total_fees = students_count * feeWithGst;
-        }
-
-        total_fees = round2(total_fees);
-
-        // Sum of all payments made by these students (installments paid)
-        // IMPORTANT: Only count payments for THIS batch's fee plan to avoid counting
-        // payments from when student was in a different batch
-        let fees_collected = 0;
-        if (studentIds.length && feePlan) {
-          const sums = await FeePayment.aggregate([
-            {
-              $match: {
-                student_id: { $in: studentIds },
-                fee_plan_id: feePlan._id, // Only count payments for current batch's fee plan
+app.get(
+  "/api/batches",
+  verifyAuth,
+  verifyPermission("canViewBatches"),
+  async (req, res) => {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+      const archivedParam = String(req.query.archived || "false").toLowerCase();
+      const isArchivedReq = archivedParam === "true" || archivedParam === "1";
+      const query = isArchivedReq
+        ? { $or: [{ isArchived: true }, { archived: true }] }
+        : {
+            $and: [
+              {
+                $or: [
+                  { isArchived: { $ne: true } },
+                  { isArchived: { $exists: false } },
+                ],
               },
-            },
-            { $group: { _id: null, total: { $sum: "$paid_amount" } } },
-          ]);
-          fees_collected = round2(sums[0]?.total || 0);
-        } else if (studentIds.length) {
-          // Fallback: if no fee plan, count all payments (old behavior)
-          const sums = await FeePayment.aggregate([
-            { $match: { student_id: { $in: studentIds } } },
-            { $group: { _id: null, total: { $sum: "$paid_amount" } } },
-          ]);
-          fees_collected = round2(sums[0]?.total || 0);
-        }
+              {
+                $or: [
+                  { archived: { $ne: true } },
+                  { archived: { $exists: false } },
+                ],
+              },
+            ],
+          };
 
-        const asObj = b.toObject();
-        asObj.students_count = students_count;
-        asObj.fees_collected = fees_collected;
-        asObj.total_fees = total_fees;
-        return asObj;
-      }),
-    );
+      // Add branch filter
+      const isSuperAdmin = req.user?.isSuperAdmin;
+      const branchId = req.headers["x-branch-id"];
 
-    res.json({ success: true, batches: enriched, total, page, limit });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      if (branchId) {
+        query.branchId = branchId;
+      } else if (!isSuperAdmin && req.user?.primaryBranch) {
+        query.branchId = req.user.primaryBranch;
+      }
+
+      const total = await Batches.countDocuments(query);
+      const batchesRaw = await Batches.find(query)
+        .populate("course_id", "name course_fee gst_percent")
+        .populate("teacher_id", "fname lname")
+        .skip(skip)
+        .limit(limit);
+
+      // Enrich with dynamic metrics: students_count, fees_collected, total_fees
+      const enriched = await Promise.all(
+        batchesRaw.map(async (b) => {
+          const batchId = b._id;
+          const courseId = b?.course_id?._id || b?.course_id;
+          const round2 = (n) => Math.round((n || 0) * 100) / 100;
+
+          // Count students in this batch and course
+          const studentFilter = { batch_id: batchId };
+          if (courseId) studentFilter["course_id"] = courseId;
+          const students = await Student.find(studentFilter).lean();
+          const studentIds = students.map((s) => s._id);
+          const students_count = students.length;
+
+          // Calculate total fees for all students with discounts + GST
+          // Workflow: For EACH student: base_fee -> apply their discount -> add GST
+          let total_fees = 0;
+          const feePlan = await FeePlan.findOne({ batch_id: batchId }).lean();
+          const gstPercent = b?.course_id?.gst_percent || 0;
+
+          if (feePlan && feePlan.total_amount) {
+            // For each student, calculate: (base - discount) + GST
+            for (const student of students) {
+              let studentFee = feePlan.total_amount; // Base fee
+
+              // Step 1: Apply student's discount
+              if (
+                student.discount_type &&
+                feePlan.discount_types &&
+                Array.isArray(feePlan.discount_types)
+              ) {
+                const discountObj = feePlan.discount_types.find(
+                  (d) => d.code === student.discount_type,
+                );
+                if (discountObj && discountObj.discount_percent) {
+                  const discountAmount =
+                    studentFee * (discountObj.discount_percent / 100);
+                  studentFee = studentFee - discountAmount;
+                }
+              }
+
+              // Step 2: Add GST on discounted amount
+              if (gstPercent > 0) {
+                const gstAmount = studentFee * (gstPercent / 100);
+                studentFee = studentFee + gstAmount;
+              }
+
+              total_fees += studentFee;
+            }
+          } else {
+            // Fallback: use course fee + GST if no fee plan
+            const courseFee = b?.course_id?.course_fee || 0;
+            const feeWithGst = courseFee * (1 + gstPercent / 100);
+            total_fees = students_count * feeWithGst;
+          }
+
+          total_fees = round2(total_fees);
+
+          // Sum of all payments made by these students (installments paid)
+          // IMPORTANT: Only count payments for THIS batch's fee plan to avoid counting
+          // payments from when student was in a different batch
+          let fees_collected = 0;
+          if (studentIds.length && feePlan) {
+            const sums = await FeePayment.aggregate([
+              {
+                $match: {
+                  student_id: { $in: studentIds },
+                  fee_plan_id: feePlan._id, // Only count payments for current batch's fee plan
+                },
+              },
+              { $group: { _id: null, total: { $sum: "$paid_amount" } } },
+            ]);
+            fees_collected = round2(sums[0]?.total || 0);
+          } else if (studentIds.length) {
+            // Fallback: if no fee plan, count all payments (old behavior)
+            const sums = await FeePayment.aggregate([
+              { $match: { student_id: { $in: studentIds } } },
+              { $group: { _id: null, total: { $sum: "$paid_amount" } } },
+            ]);
+            fees_collected = round2(sums[0]?.total || 0);
+          }
+
+          const asObj = b.toObject();
+          asObj.students_count = students_count;
+          asObj.fees_collected = fees_collected;
+          asObj.total_fees = total_fees;
+          return asObj;
+        }),
+      );
+
+      res.json({ success: true, batches: enriched, total, page, limit });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // POST /api/batches (add new batch)
-app.post("/api/batches", verifyAuth, async (req, res) => {
-  try {
-    console.log("=== BATCH CREATION REQUEST ===");
-    console.log("Raw body:", req.body);
-
-    // Get branchId from context
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
-    if (!branchId) {
-      return res.status(400).json({
-        success: false,
-        message: "Branch ID is required",
-      });
-    }
-
-    // Destructure required fields
-    const { name, course_id, syllabus_id, teacher_id, schedule } = req.body;
-
-    // Validate required fields
-    if (!name || !course_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields: name and course_id are mandatory",
-      });
-    }
-
-    // Build batch data
-    const batchData = {
-      branchId,
-      name,
-      course_id,
-    };
-
-    // Add optional fields if provided
-    if (syllabus_id) batchData.syllabus_id = syllabus_id;
-    if (teacher_id) batchData.teacher_id = teacher_id;
-    if (schedule && Array.isArray(schedule)) batchData.schedule = schedule;
-
-    // Validate ObjectIds
-    if (!mongoose.Types.ObjectId.isValid(course_id)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid course_id" });
-    }
-    if (
-      req.body.teacher_id &&
-      !mongoose.Types.ObjectId.isValid(req.body.teacher_id)
-    ) {
-      console.warn("Invalid teacher_id provided, removing from payload");
-      delete req.body.teacher_id; // ignore invalid teacher_id
-    }
-    if (req.body.teacher_id === "") delete req.body.teacher_id;
-
-    // Parse schedule if string
-    let scheduleObj = schedule;
+app.post(
+  "/api/batches",
+  verifyAuth,
+  verifyPermission("canEditBatches"),
+  async (req, res) => {
     try {
-      if (typeof schedule === "string") scheduleObj = JSON.parse(schedule);
-    } catch (e) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid schedule JSON" });
-    }
-    if (
-      !scheduleObj.days ||
-      !Array.isArray(scheduleObj.days) ||
-      scheduleObj.days.length === 0
-    ) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Schedule must include days[]" });
-    }
+      console.log("=== BATCH CREATION REQUEST ===");
+      console.log("Raw body:", req.body);
 
-    // Replace schedule string with structured schedule if desired (or keep as string to match schema)
-    // Current schema stores 'schedule' as string, so we stringify again to ensure consistency
-    if (schedule) {
-      batchData.schedule =
-        typeof schedule === "string" ? schedule : JSON.stringify(schedule);
-    }
+      // Get branchId from context
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+      if (!branchId) {
+        return res.status(400).json({
+          success: false,
+          message: "Branch ID is required",
+        });
+      }
 
-    // Persist
-    const batch = new Batches(batchData);
-    await batch.save();
-    console.log("Batch created with _id:", batch._id);
-    res.json({ success: true, batch });
-  } catch (err) {
-    console.error("Batch creation failed:", err);
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      // Destructure required fields
+      const { name, course_id, syllabus_id, teacher_id, schedule } = req.body;
+
+      // Validate required fields
+      if (!name || !course_id) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing required fields: name and course_id are mandatory",
+        });
+      }
+
+      // Build batch data
+      const batchData = {
+        branchId,
+        name,
+        course_id,
+      };
+
+      // Add optional fields if provided
+      if (syllabus_id) batchData.syllabus_id = syllabus_id;
+      if (teacher_id) batchData.teacher_id = teacher_id;
+      if (schedule && Array.isArray(schedule)) batchData.schedule = schedule;
+
+      // Validate ObjectIds
+      if (!mongoose.Types.ObjectId.isValid(course_id)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid course_id" });
+      }
+      if (
+        req.body.teacher_id &&
+        !mongoose.Types.ObjectId.isValid(req.body.teacher_id)
+      ) {
+        console.warn("Invalid teacher_id provided, removing from payload");
+        delete req.body.teacher_id; // ignore invalid teacher_id
+      }
+      if (req.body.teacher_id === "") delete req.body.teacher_id;
+
+      // Parse schedule if string
+      let scheduleObj = schedule;
+      try {
+        if (typeof schedule === "string") scheduleObj = JSON.parse(schedule);
+      } catch (e) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid schedule JSON" });
+      }
+      if (
+        !scheduleObj.days ||
+        !Array.isArray(scheduleObj.days) ||
+        scheduleObj.days.length === 0
+      ) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Schedule must include days[]" });
+      }
+
+      // Replace schedule string with structured schedule if desired (or keep as string to match schema)
+      // Current schema stores 'schedule' as string, so we stringify again to ensure consistency
+      if (schedule) {
+        batchData.schedule =
+          typeof schedule === "string" ? schedule : JSON.stringify(schedule);
+      }
+
+      // Persist
+      const batch = new Batches(batchData);
+      await batch.save();
+      console.log("Batch created with _id:", batch._id);
+      res.json({ success: true, batch });
+    } catch (err) {
+      console.error("Batch creation failed:", err);
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // PUT /api/batches/:id (edit batch)
-app.put("/api/batches/:id", verifyAuth, async (req, res) => {
-  try {
-    const batch = await Batches.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    res.json({ success: true, batch });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.put(
+  "/api/batches/:id",
+  verifyAuth,
+  verifyPermission("canEditBatches"),
+  async (req, res) => {
+    try {
+      const batch = await Batches.findByIdAndUpdate(req.params.id, req.body, {
+        new: true,
+      });
+      res.json({ success: true, batch });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // DELETE /api/batches/:id (hard delete) - admin-only in future; retain for completeness
-app.delete("/api/batches/:id", async (req, res) => {
-  try {
-    await Batches.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.delete(
+  "/api/batches/:id",
+  verifyAuth,
+  verifyPermission("canEditBatches"),
+  async (req, res) => {
+    try {
+      await Batches.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // PATCH /api/batches/:id/archive (archive batch)
-app.patch("/api/batches/:id/archive", async (req, res) => {
-  try {
-    const batch = await Batches.findByIdAndUpdate(
-      req.params.id,
-      { $set: { isArchived: true, archived: true } },
-      { new: true },
-    );
-    res.json({ success: true, batch });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.patch(
+  "/api/batches/:id/archive",
+  verifyAuth,
+  verifyPermission("canEditBatches"),
+  async (req, res) => {
+    try {
+      const batch = await Batches.findByIdAndUpdate(
+        req.params.id,
+        { $set: { isArchived: true, archived: true } },
+        { new: true },
+      );
+      res.json({ success: true, batch });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // PATCH /api/batches/:id/restore (unarchive batch)
-app.patch("/api/batches/:id/restore", async (req, res) => {
-  try {
-    const batch = await Batches.findByIdAndUpdate(
-      req.params.id,
-      { $set: { isArchived: false, archived: false } },
-      { new: true },
-    );
-    res.json({ success: true, batch });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.patch(
+  "/api/batches/:id/restore",
+  verifyAuth,
+  verifyPermission("canEditBatches"),
+  async (req, res) => {
+    try {
+      const batch = await Batches.findByIdAndUpdate(
+        req.params.id,
+        { $set: { isArchived: false, archived: false } },
+        { new: true },
+      );
+      res.json({ success: true, batch });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // GET /api/batches/by-course - grouped batches mapped to course_id
-app.get("/api/batches/by-course", async (req, res) => {
-  try {
-    const match = {
-      $and: [
-        {
-          $or: [
-            { isArchived: { $ne: true } },
-            { isArchived: { $exists: false } },
-          ],
-        },
-        {
-          $or: [{ archived: { $ne: true } }, { archived: { $exists: false } }],
-        },
-      ],
-    };
+app.get(
+  "/api/batches/by-course",
+  verifyAuth,
+  verifyPermission("canViewBatches"),
+  async (req, res) => {
+    try {
+      const match = {
+        $and: [
+          {
+            $or: [
+              { isArchived: { $ne: true } },
+              { isArchived: { $exists: false } },
+            ],
+          },
+          {
+            $or: [
+              { archived: { $ne: true } },
+              { archived: { $exists: false } },
+            ],
+          },
+        ],
+      };
 
-    const result = await Batches.aggregate([
-      { $match: match },
-      {
-        $group: {
-          _id: "$course_id",
-          batches: { $push: "$name" },
-          count: { $sum: 1 },
+      const result = await Batches.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: "$course_id",
+            batches: { $push: "$name" },
+            count: { $sum: 1 },
+          },
         },
-      },
-    ]);
+      ]);
 
-    res.json({ success: true, byCourse: result });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      res.json({ success: true, byCourse: result });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== Courses Routes =====
 
 // ===== Courses API Routes =====
 // GET /api/courses with pagination and archived filter
-app.get("/api/courses", async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    const archivedParam = String(req.query.archived || "false").toLowerCase();
-    const isArchivedReq = archivedParam === "true" || archivedParam === "1";
-    const query = isArchivedReq
-      ? { $or: [{ isArchived: true }, { archived: true }] }
-      : {
-          $and: [
-            {
-              $or: [
-                { isArchived: { $ne: true } },
-                { isArchived: { $exists: false } },
-              ],
-            },
-            {
-              $or: [
-                { archived: { $ne: true } },
-                { archived: { $exists: false } },
-              ],
-            },
-          ],
-        };
+app.get(
+  "/api/courses",
+  verifyAuth,
+  verifyPermission("canViewCourses"),
+  async (req, res) => {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+      const archivedParam = String(req.query.archived || "false").toLowerCase();
+      const isArchivedReq = archivedParam === "true" || archivedParam === "1";
+      const query = isArchivedReq
+        ? { $or: [{ isArchived: true }, { archived: true }] }
+        : {
+            $and: [
+              {
+                $or: [
+                  { isArchived: { $ne: true } },
+                  { isArchived: { $exists: false } },
+                ],
+              },
+              {
+                $or: [
+                  { archived: { $ne: true } },
+                  { archived: { $exists: false } },
+                ],
+              },
+            ],
+          };
 
-    // Add branch filter
-    const isSuperAdmin = req.user?.isSuperAdmin;
-    const branchId = req.headers["x-branch-id"];
+      // Add branch filter
+      const isSuperAdmin = req.user?.isSuperAdmin;
+      const branchId = req.headers["x-branch-id"];
 
-    if (branchId) {
-      query.branchId = branchId;
-    } else if (!isSuperAdmin && req.user?.primaryBranch) {
-      query.branchId = req.user.primaryBranch;
+      if (branchId) {
+        query.branchId = branchId;
+      } else if (!isSuperAdmin && req.user?.primaryBranch) {
+        query.branchId = req.user.primaryBranch;
+      }
+
+      const total = await Course.countDocuments(query);
+      // Fetch the current page of courses
+      const courses = await Course.find(query).skip(skip).limit(limit).lean();
+
+      // Compute real-time student counts for the fetched course IDs
+      const courseIds = courses.map((c) => c._id).filter(Boolean);
+      let countsMap = new Map();
+      if (courseIds.length) {
+        const counts = await Student.aggregate([
+          { $match: { course_id: { $in: courseIds } } },
+          { $group: { _id: "$course_id", count: { $sum: 1 } } },
+        ]);
+        countsMap = new Map(counts.map((it) => [String(it._id), it.count]));
+      }
+
+      const enriched = courses.map((c) => ({
+        ...c,
+        // ensure key used by frontend is present and numeric
+        students_count: countsMap.get(String(c._id)) || 0,
+      }));
+
+      res.json({ success: true, courses: enriched, total, page, limit });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    const total = await Course.countDocuments(query);
-    // Fetch the current page of courses
-    const courses = await Course.find(query).skip(skip).limit(limit).lean();
-
-    // Compute real-time student counts for the fetched course IDs
-    const courseIds = courses.map((c) => c._id).filter(Boolean);
-    let countsMap = new Map();
-    if (courseIds.length) {
-      const counts = await Student.aggregate([
-        { $match: { course_id: { $in: courseIds } } },
-        { $group: { _id: "$course_id", count: { $sum: 1 } } },
-      ]);
-      countsMap = new Map(counts.map((it) => [String(it._id), it.count]));
-    }
-
-    const enriched = courses.map((c) => ({
-      ...c,
-      // ensure key used by frontend is present and numeric
-      students_count: countsMap.get(String(c._id)) || 0,
-    }));
-
-    res.json({ success: true, courses: enriched, total, page, limit });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 // DELETE /api/courses/:id
-app.delete("/api/courses/:id", async (req, res) => {
-  try {
-    await Course.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.delete(
+  "/api/courses/:id",
+  verifyAuth,
+  verifyPermission("canEditCourses"),
+  async (req, res) => {
+    try {
+      await Course.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // PUT /api/courses/:id (edit)
-app.put("/api/courses/:id", async (req, res) => {
-  try {
-    let { course_start, course_end, ...rest } = req.body;
-    let updateData = { ...rest };
-    let duration_months = 0;
+app.put(
+  "/api/courses/:id",
+  verifyAuth,
+  verifyPermission("canEditCourses"),
+  async (req, res) => {
+    try {
+      let { course_start, course_end, ...rest } = req.body;
+      let updateData = { ...rest };
+      let duration_months = 0;
 
-    // Safely parse and validate dates
-    if (course_start && course_start.trim?.()) {
-      const parsedStart = new Date(course_start);
-      if (!isNaN(parsedStart)) {
-        updateData.course_start = parsedStart;
+      // Safely parse and validate dates
+      if (course_start && course_start.trim?.()) {
+        const parsedStart = new Date(course_start);
+        if (!isNaN(parsedStart)) {
+          updateData.course_start = parsedStart;
+        }
       }
-    }
 
-    if (course_end && course_end.trim?.()) {
-      const parsedEnd = new Date(course_end);
-      if (!isNaN(parsedEnd)) {
-        updateData.course_end = parsedEnd;
+      if (course_end && course_end.trim?.()) {
+        const parsedEnd = new Date(course_end);
+        if (!isNaN(parsedEnd)) {
+          updateData.course_end = parsedEnd;
+        }
       }
-    }
 
-    // Calculate duration_months only if both dates are valid
-    if (updateData.course_start && updateData.course_end) {
-      duration_months =
-        (updateData.course_end.getFullYear() -
-          updateData.course_start.getFullYear()) *
-          12 +
-        (updateData.course_end.getMonth() - updateData.course_start.getMonth());
-      if (duration_months < 0) duration_months = 0;
-      updateData.duration_months = duration_months;
-    }
+      // Calculate duration_months only if both dates are valid
+      if (updateData.course_start && updateData.course_end) {
+        duration_months =
+          (updateData.course_end.getFullYear() -
+            updateData.course_start.getFullYear()) *
+            12 +
+          (updateData.course_end.getMonth() -
+            updateData.course_start.getMonth());
+        if (duration_months < 0) duration_months = 0;
+        updateData.duration_months = duration_months;
+      }
 
-    const updated = await Course.findByIdAndUpdate(req.params.id, updateData, {
-      new: true,
-    });
-    res.json({ success: true, data: updated });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      const updated = await Course.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        {
+          new: true,
+        },
+      );
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // PATCH /api/courses/:id/archive (archive)
-app.patch("/api/courses/:id/archive", async (req, res) => {
-  try {
-    const updated = await Course.findByIdAndUpdate(
-      req.params.id,
-      { $set: { isArchived: true, archived: true } },
-      { new: true },
-    );
-    res.json({ success: true, course: updated });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.patch(
+  "/api/courses/:id/archive",
+  verifyAuth,
+  verifyPermission("canEditCourses"),
+  async (req, res) => {
+    try {
+      const updated = await Course.findByIdAndUpdate(
+        req.params.id,
+        { $set: { isArchived: true, archived: true } },
+        { new: true },
+      );
+      res.json({ success: true, course: updated });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // PATCH /api/courses/:id/restore (unarchive)
-app.patch("/api/courses/:id/restore", async (req, res) => {
-  try {
-    const updated = await Course.findByIdAndUpdate(
-      req.params.id,
-      { $set: { isArchived: false, archived: false } },
-      { new: true },
-    );
-    res.json({ success: true, course: updated });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.patch(
+  "/api/courses/:id/restore",
+  verifyAuth,
+  verifyPermission("canEditCourses"),
+  async (req, res) => {
+    try {
+      const updated = await Course.findByIdAndUpdate(
+        req.params.id,
+        { $set: { isArchived: false, archived: false } },
+        { new: true },
+      );
+      res.json({ success: true, course: updated });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
-app.post("/api/courses", async (req, res) => {
-  try {
-    // Get branchId from header or user's primaryBranch
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+app.post(
+  "/api/courses",
+  verifyAuth,
+  verifyPermission("canEditCourses"),
+  async (req, res) => {
+    try {
+      // Get branchId from header or user's primaryBranch
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
 
-    let { course_start, course_end, ...rest } = req.body;
-    let updateData = { ...rest };
-    let duration_months = 0;
+      let { course_start, course_end, ...rest } = req.body;
+      let updateData = { ...rest };
+      let duration_months = 0;
 
-    // Safely parse and validate dates
-    if (course_start && course_start.trim?.()) {
-      const parsedStart = new Date(course_start);
-      if (!isNaN(parsedStart)) {
-        updateData.course_start = parsedStart;
+      // Safely parse and validate dates
+      if (course_start && course_start.trim?.()) {
+        const parsedStart = new Date(course_start);
+        if (!isNaN(parsedStart)) {
+          updateData.course_start = parsedStart;
+        }
       }
-    }
 
-    if (course_end && course_end.trim?.()) {
-      const parsedEnd = new Date(course_end);
-      if (!isNaN(parsedEnd)) {
-        updateData.course_end = parsedEnd;
+      if (course_end && course_end.trim?.()) {
+        const parsedEnd = new Date(course_end);
+        if (!isNaN(parsedEnd)) {
+          updateData.course_end = parsedEnd;
+        }
       }
-    }
 
-    // Calculate duration in months
-    if (
-      updateData.course_start &&
-      updateData.course_end &&
-      !isNaN(updateData.course_start) &&
-      !isNaN(updateData.course_end)
-    ) {
-      duration_months =
-        (updateData.course_end.getFullYear() -
-          updateData.course_start.getFullYear()) *
-          12 +
-        (updateData.course_end.getMonth() - updateData.course_start.getMonth());
-      if (duration_months < 0) duration_months = 0;
+      // Calculate duration in months
+      if (
+        updateData.course_start &&
+        updateData.course_end &&
+        !isNaN(updateData.course_start) &&
+        !isNaN(updateData.course_end)
+      ) {
+        duration_months =
+          (updateData.course_end.getFullYear() -
+            updateData.course_start.getFullYear()) *
+            12 +
+          (updateData.course_end.getMonth() -
+            updateData.course_start.getMonth());
+        if (duration_months < 0) duration_months = 0;
+      }
+      const course = new Course({
+        ...updateData,
+        duration_months,
+        branchId, // Auto-assign branch
+      });
+      await course.save();
+      res.json(course);
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-    const course = new Course({
-      ...updateData,
-      duration_months,
-      branchId, // Auto-assign branch
-    });
-    await course.save();
-    res.json(course);
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // ===== MongoDB Connection =====
 const connectDB = async () => {
@@ -1301,528 +1408,549 @@ app.post("/api/login", async (req, res) => {
 // Create a new student (Admin only) - Creates both User and Student in one transaction
 // Admin adds an existing user to Students collection
 // Create student with AUTO FEE SETUP
-app.post("/api/students", async (req, res) => {
-  console.log("📝 Creating new student with auto fee setup...");
+app.post(
+  "/api/students",
+  verifyAuth,
+  verifyPermission("canEditStudents"),
+  async (req, res) => {
+    console.log("📝 Creating new student with auto fee setup...");
 
-  try {
-    // Get branchId from header or user's primaryBranch
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+    try {
+      // Get branchId from header or user's primaryBranch
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
 
-    const {
-      email,
-      phone,
-      fname,
-      lname,
-      dob,
-      gender,
-      aadhar,
-      address,
-      course_id,
-      batch_id,
-      fee_status = "pending",
-      fee_plan,
-      fee_plan_id,
-      discount_type,
-      guardians = [],
-    } = req.body;
-
-    console.log("📦 Received fee_plan_id:", fee_plan_id);
-    console.log("📦 Received discount_type:", discount_type);
-
-    // Normalize aadhar
-    const normalizedAadhar =
-      !aadhar || aadhar === null
-        ? undefined
-        : String(aadhar).trim()
-          ? String(aadhar).trim()
-          : undefined;
-
-    // 1. Check or create user
-    let user = null;
-    let createdUser = false;
-    let tempPassword;
-
-    if (email || phone) {
-      user = await User.findOne({
-        $or: [email ? { email } : null, phone ? { phone } : null].filter(
-          Boolean,
-        ),
-      });
-    }
-
-    if (!user) {
-      tempPassword = generateTempPassword(phone);
-      // For testing: log the auto-generated password to the server console
-      // Remove this after verification to avoid leaking sensitive info.
-      try {
-        console.log(
-          `🔐 [DEBUG] Generated temp password for new student (${
-            email || phone || "no-contact"
-          }):`,
-          tempPassword,
-        );
-      } catch (_) {
-        // noop
-      }
-      const newUser = new User({
-        fname: fname,
-        lname: lname,
+      const {
         email,
         phone,
-        passwordhash: tempPassword,
-        roleid: "student",
-        role: "Student",
-        status: true,
-      });
+        fname,
+        lname,
+        dob,
+        gender,
+        aadhar,
+        address,
+        course_id,
+        batch_id,
+        fee_status = "pending",
+        fee_plan,
+        fee_plan_id,
+        discount_type,
+        guardians = [],
+      } = req.body;
 
-      try {
-        user = await newUser.save();
-        createdUser = true;
-        console.log("✅ User created:", user._id);
-      } catch (e) {
-        return res.status(400).json({
-          success: false,
-          message: e?.message || "Failed to create user",
+      console.log("📦 Received fee_plan_id:", fee_plan_id);
+      console.log("📦 Received discount_type:", discount_type);
+
+      // Normalize aadhar
+      const normalizedAadhar =
+        !aadhar || aadhar === null
+          ? undefined
+          : String(aadhar).trim()
+            ? String(aadhar).trim()
+            : undefined;
+
+      // 1. Check or create user
+      let user = null;
+      let createdUser = false;
+      let tempPassword;
+
+      if (email || phone) {
+        user = await User.findOne({
+          $or: [email ? { email } : null, phone ? { phone } : null].filter(
+            Boolean,
+          ),
         });
       }
-    } else if (user.roleid !== "student") {
-      return res
-        .status(400)
-        .json({ success: false, message: "User exists with a different role" });
-    }
 
-    const existingStudent = await Student.findOne({ user_id: user._id });
-    if (existingStudent) {
-      return res.status(400).json({
-        success: false,
-        message: "Student profile already exists for this user",
-      });
-    }
+      if (!user) {
+        tempPassword = generateTempPassword(phone);
+        // For testing: log the auto-generated password to the server console
+        // Remove this after verification to avoid leaking sensitive info.
+        try {
+          console.log(
+            `🔐 [DEBUG] Generated temp password for new student (${
+              email || phone || "no-contact"
+            }):`,
+            tempPassword,
+          );
+        } catch (_) {
+          // noop
+        }
+        const newUser = new User({
+          fname: fname,
+          lname: lname,
+          email,
+          phone,
+          passwordhash: tempPassword,
+          roleid: "student",
+          role: "Student",
+          status: true,
+        });
 
-    // 2. Create student profile
-    const newStudent = new Student({
-      branchId, // Auto-assign branch
-      user_id: user._id,
-      fname: fname || user.fname,
-      lname: lname || user.lname,
-      dob,
-      gender,
-      aadhar: normalizedAadhar,
-      address,
-      course_id: course_id || null,
-      batch_id: batch_id || null,
-      fee_status,
-      fee_plan: fee_plan || "full",
-      fee_plan_id: fee_plan_id || null, // Save the selected fee plan ID
-      discount_type: discount_type || null, // Save the selected discount type
-      admission_date: new Date(),
-    });
-
-    await newStudent.save();
-    console.log("✅ Student created:", newStudent._id);
-    console.log("   - Fee Plan ID:", fee_plan_id);
-    console.log("   - Discount Type:", discount_type);
-
-    // 3. ===== AUTO-CREATE FEE INSTALLMENTS =====
-    if (course_id && batch_id) {
-      const course = await Course.findById(course_id);
-
-      if (!course || !course.course_fee) {
-        console.log("⚠️ Course fee not found, skipping fee setup");
-      } else {
-        console.log(`💰 Course fee: ₹${course.course_fee}`);
-
-        // Check if fee plan exists for this batch
-        let feePlan = await FeePlan.findOne({ batch_id });
-
-        if (!feePlan) {
-          // Create new fee plan for this batch
-          const numInstallments = 3;
-
-          feePlan = new FeePlan({
-            batch_id,
-            total_amount: course.course_fee,
-            num_installments: numInstallments,
+        try {
+          user = await newUser.save();
+          createdUser = true;
+          console.log("✅ User created:", user._id);
+        } catch (e) {
+          return res.status(400).json({
+            success: false,
+            message: e?.message || "Failed to create user",
           });
-          await feePlan.save();
-          console.log("✅ Fee plan created:", feePlan._id);
+        }
+      } else if (user.roleid !== "student") {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "User exists with a different role",
+          });
+      }
 
-          // Create installments
-          const installmentAmount = course.course_fee / numInstallments;
-          const admissionDate = new Date();
+      const existingStudent = await Student.findOne({ user_id: user._id });
+      if (existingStudent) {
+        return res.status(400).json({
+          success: false,
+          message: "Student profile already exists for this user",
+        });
+      }
 
-          for (let i = 0; i < numInstallments; i++) {
-            const dueDate = new Date(admissionDate);
-            dueDate.setMonth(dueDate.getMonth() + i * 3); // 0, 3, 6 months
+      // 2. Create student profile
+      const newStudent = new Student({
+        branchId, // Auto-assign branch
+        user_id: user._id,
+        fname: fname || user.fname,
+        lname: lname || user.lname,
+        dob,
+        gender,
+        aadhar: normalizedAadhar,
+        address,
+        course_id: course_id || null,
+        batch_id: batch_id || null,
+        fee_status,
+        fee_plan: fee_plan || "full",
+        fee_plan_id: fee_plan_id || null, // Save the selected fee plan ID
+        discount_type: discount_type || null, // Save the selected discount type
+        admission_date: new Date(),
+      });
 
-            const installment = new FeeInstallment({
-              plan_id: feePlan._id,
-              installment_no: i + 1,
-              due_date: dueDate,
-              amount: installmentAmount,
-            });
-            await installment.save();
-            console.log(
-              `✅ Installment ${
-                i + 1
-              } created - Due: ${dueDate.toDateString()}, Amount: ₹${installmentAmount}`,
-            );
-          }
+      await newStudent.save();
+      console.log("✅ Student created:", newStudent._id);
+      console.log("   - Fee Plan ID:", fee_plan_id);
+      console.log("   - Discount Type:", discount_type);
+
+      // 3. ===== AUTO-CREATE FEE INSTALLMENTS =====
+      if (course_id && batch_id) {
+        const course = await Course.findById(course_id);
+
+        if (!course || !course.course_fee) {
+          console.log("⚠️ Course fee not found, skipping fee setup");
         } else {
-          console.log("✅ Fee plan already exists for batch");
-        }
-      }
-    }
+          console.log(`💰 Course fee: ₹${course.course_fee}`);
 
-    // 4. Create parent profiles (if provided)
-    const createdParents = [];
-    if (guardians && Array.isArray(guardians)) {
-      for (const guardian of guardians) {
-        if (guardian.name && guardian.phone && guardian.relationship) {
-          try {
-            let parentUser = await User.findOne({ phone: guardian.phone });
+          // Check if fee plan exists for this batch
+          let feePlan = await FeePlan.findOne({ batch_id });
 
-            if (!parentUser) {
-              const defaultPassword = generateTempPassword(guardian.phone);
-              parentUser = new User({
-                fname: guardian.name.split(" ")[0],
-                lname:
-                  guardian.name.split(" ").slice(1).join(" ") ||
-                  guardian.name.split(" ")[0],
-                email: guardian.email || `${guardian.phone}@parent.temp`,
-                phone: guardian.phone,
-                passwordhash: defaultPassword,
-                roleid: "parent",
-                role: "Parent",
-                status: true,
-              });
-              await parentUser.save();
-            }
+          if (!feePlan) {
+            // Create new fee plan for this batch
+            const numInstallments = 3;
 
-            const parentProfile = new Parent({
-              user_id: parentUser._id,
-              fname: parentUser.fname,
-              lname: parentUser.lname,
-              student_id: newStudent._id,
-              aadhar: guardian.aadhar || null,
-              relation: guardian.relationship,
+            feePlan = new FeePlan({
+              batch_id,
+              total_amount: course.course_fee,
+              num_installments: numInstallments,
             });
-            await parentProfile.save();
-            createdParents.push(parentProfile);
-          } catch (parentErr) {
-            console.error("Error creating parent:", parentErr);
+            await feePlan.save();
+            console.log("✅ Fee plan created:", feePlan._id);
+
+            // Create installments
+            const installmentAmount = course.course_fee / numInstallments;
+            const admissionDate = new Date();
+
+            for (let i = 0; i < numInstallments; i++) {
+              const dueDate = new Date(admissionDate);
+              dueDate.setMonth(dueDate.getMonth() + i * 3); // 0, 3, 6 months
+
+              const installment = new FeeInstallment({
+                plan_id: feePlan._id,
+                installment_no: i + 1,
+                due_date: dueDate,
+                amount: installmentAmount,
+              });
+              await installment.save();
+              console.log(
+                `✅ Installment ${
+                  i + 1
+                } created - Due: ${dueDate.toDateString()}, Amount: ₹${installmentAmount}`,
+              );
+            }
+          } else {
+            console.log("✅ Fee plan already exists for batch");
           }
         }
       }
+
+      // 4. Create parent profiles (if provided)
+      const createdParents = [];
+      if (guardians && Array.isArray(guardians)) {
+        for (const guardian of guardians) {
+          if (guardian.name && guardian.phone && guardian.relationship) {
+            try {
+              let parentUser = await User.findOne({ phone: guardian.phone });
+
+              if (!parentUser) {
+                const defaultPassword = generateTempPassword(guardian.phone);
+                parentUser = new User({
+                  fname: guardian.name.split(" ")[0],
+                  lname:
+                    guardian.name.split(" ").slice(1).join(" ") ||
+                    guardian.name.split(" ")[0],
+                  email: guardian.email || `${guardian.phone}@parent.temp`,
+                  phone: guardian.phone,
+                  passwordhash: defaultPassword,
+                  roleid: "parent",
+                  role: "Parent",
+                  status: true,
+                });
+                await parentUser.save();
+              }
+
+              const parentProfile = new Parent({
+                user_id: parentUser._id,
+                fname: parentUser.fname,
+                lname: parentUser.lname,
+                student_id: newStudent._id,
+                aadhar: guardian.aadhar || null,
+                relation: guardian.relationship,
+              });
+              await parentProfile.save();
+              createdParents.push(parentProfile);
+            } catch (parentErr) {
+              console.error("Error creating parent:", parentErr);
+            }
+          }
+        }
+      }
+
+      console.log("🎉 Student creation complete with fee setup");
+
+      // Also echo to server logs for testing visibility
+      if (createdUser && tempPassword) {
+        console.log(
+          `✅ Student created: ${newStudent._id} | User: ${user._id} | TempPassword: ${tempPassword}`,
+        );
+      }
+
+      res.status(201).json({
+        success: true,
+        message: createdUser
+          ? "Student and user account created with fees."
+          : "Student profile created with fees.",
+        student: newStudent,
+        parents: createdParents,
+        credentials: createdUser
+          ? { email: user.email, phone: user.phone, tempPassword }
+          : undefined,
+      });
+    } catch (err) {
+      console.error("❌ Error creating student:", err);
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    console.log("🎉 Student creation complete with fee setup");
-
-    // Also echo to server logs for testing visibility
-    if (createdUser && tempPassword) {
-      console.log(
-        `✅ Student created: ${newStudent._id} | User: ${user._id} | TempPassword: ${tempPassword}`,
-      );
-    }
-
-    res.status(201).json({
-      success: true,
-      message: createdUser
-        ? "Student and user account created with fees."
-        : "Student profile created with fees.",
-      student: newStudent,
-      parents: createdParents,
-      credentials: createdUser
-        ? { email: user.email, phone: user.phone, tempPassword }
-        : undefined,
-    });
-  } catch (err) {
-    console.error("❌ Error creating student:", err);
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Get all students with user details + batch/course/fees metadata (Admin/Teacher)
-app.get("/api/students", verifyAuth, async (req, res) => {
-  console.log("📋 GET /api/students called");
-  try {
-    const filter = {};
-    const isSuperAdmin = req.user?.isSuperAdmin;
-    const branchId = req.headers["x-branch-id"];
+app.get(
+  "/api/students",
+  verifyAuth,
+  verifyPermission("canViewStudents"),
+  async (req, res) => {
+    console.log("📋 GET /api/students called");
+    try {
+      const filter = {};
+      const isSuperAdmin = req.user?.isSuperAdmin;
+      const branchId = req.headers["x-branch-id"];
 
-    if (branchId) {
-      filter.branchId = branchId;
-    } else if (!isSuperAdmin && req.user?.primaryBranch) {
-      filter.branchId = req.user.primaryBranch;
-    }
+      if (branchId) {
+        filter.branchId = branchId;
+      } else if (!isSuperAdmin && req.user?.primaryBranch) {
+        filter.branchId = req.user.primaryBranch;
+      }
 
-    // Keep course_id and batch_id as raw IDs to avoid breaking frontend filters
-    const students = await Student.find(filter).populate(
-      "user_id",
-      "email phone status last_login",
-    );
-    console.log(`✅ Found ${students.length} students`);
+      // Keep course_id and batch_id as raw IDs to avoid breaking frontend filters
+      const students = await Student.find(filter).populate(
+        "user_id",
+        "email phone status last_login",
+      );
+      console.log(`✅ Found ${students.length} students`);
 
-    const round2 = (n) => Math.round((n || 0) * 100) / 100;
-    const EPS = 0.005;
+      const round2 = (n) => Math.round((n || 0) * 100) / 100;
+      const EPS = 0.005;
 
-    // Collect unique IDs for batch/course and students
-    const studentIds = students.map((s) => s._id);
-    const batchIds = [
-      ...new Set(
-        students
-          .map((s) => (s.batch_id ? String(s.batch_id) : null))
-          .filter(Boolean),
-      ),
-    ];
-    const courseIds = [
-      ...new Set(
-        students
-          .map((s) => (s.course_id ? String(s.course_id) : null))
-          .filter(Boolean),
-      ),
-    ];
+      // Collect unique IDs for batch/course and students
+      const studentIds = students.map((s) => s._id);
+      const batchIds = [
+        ...new Set(
+          students
+            .map((s) => (s.batch_id ? String(s.batch_id) : null))
+            .filter(Boolean),
+        ),
+      ];
+      const courseIds = [
+        ...new Set(
+          students
+            .map((s) => (s.course_id ? String(s.course_id) : null))
+            .filter(Boolean),
+        ),
+      ];
 
-    // Fetch aggregates and lookups in parallel
-    const [batchesDocs, feePlansDocs, coursesDocs] = await Promise.all([
-      batchIds.length
-        ? Batches.find({ _id: { $in: batchIds } }).populate(
-            "course_id",
-            "name course_fee gst_percent",
-          )
-        : [],
-      batchIds.length ? FeePlan.find({ batch_id: { $in: batchIds } }) : [],
-      courseIds.length ? Course.find({ _id: { $in: courseIds } }) : [],
-    ]);
+      // Fetch aggregates and lookups in parallel
+      const [batchesDocs, feePlansDocs, coursesDocs] = await Promise.all([
+        batchIds.length
+          ? Batches.find({ _id: { $in: batchIds } }).populate(
+              "course_id",
+              "name course_fee gst_percent",
+            )
+          : [],
+        batchIds.length ? FeePlan.find({ batch_id: { $in: batchIds } }) : [],
+        courseIds.length ? Course.find({ _id: { $in: courseIds } }) : [],
+      ]);
 
-    // Build maps for quick access
-    const batchById = new Map(
-      batchesDocs.map((b) => [
-        String(b._id),
-        { _id: String(b._id), name: b.name, course_id: b.course_id },
-      ]),
-    );
-    const feePlanByBatch = new Map(
-      feePlansDocs.map((fp) => [
-        String(fp.batch_id),
-        {
-          _id: fp._id,
-          total_amount: round2(fp.total_amount || 0),
-          discount_types: fp.discount_types || [],
-        },
-      ]),
-    );
-    const courseById = new Map(
-      coursesDocs.map((c) => [
-        String(c._id),
-        {
-          _id: String(c._id),
-          name: c.name,
-          course_fee: round2(c.course_fee || 0),
-          gst_percent: c.gst_percent || 0,
-        },
-      ]),
-    );
-
-    // Attach metadata per student
-    const enriched = await Promise.all(
-      students.map(async (s) => {
-        const sid = String(s._id);
-        const bid = s.batch_id ? String(s.batch_id) : undefined;
-        const cid = s.course_id ? String(s.course_id) : undefined;
-
-        // USE SAME LOGIC AS /account PAGE:
-        // 1. Get student's fee_plan_id (stored on student record)
-        // 2. Calculate: base -> apply student's discount -> add 18% GST
-        // 3. Count payments for that specific fee_plan_id
-
-        let total = 0;
-        let paid = 0;
-        let feePlan = null;
-
-        // First try to get fee plan from student record (like /account page does)
-        if (s.fee_plan_id) {
-          feePlan = feePlansDocs.find(
-            (fp) => String(fp._id) === String(s.fee_plan_id),
-          );
-        }
-
-        // Fallback to batch fee plan if student doesn't have one assigned
-        if (!feePlan && bid) {
-          feePlan = feePlanByBatch.get(bid);
-        }
-
-        if (feePlan && feePlan.total_amount) {
-          // Calculate student's total fee (same as /account page)
-          let studentTotalFee = feePlan.total_amount;
-
-          // Apply student's individual discount
-          if (
-            s.discount_type &&
-            feePlan.discount_types &&
-            Array.isArray(feePlan.discount_types)
-          ) {
-            const selectedDiscount = feePlan.discount_types.find(
-              (d) => d.code === s.discount_type,
-            );
-            if (selectedDiscount && selectedDiscount.discount_percent) {
-              const discountAmount =
-                studentTotalFee * (selectedDiscount.discount_percent / 100);
-              studentTotalFee = studentTotalFee - discountAmount;
-            }
-          }
-
-          // Add 18% GST to discounted amount (hardcoded like /account page)
-          const tax = studentTotalFee * 0.18;
-          studentTotalFee = studentTotalFee + tax;
-
-          total = round2(studentTotalFee);
-
-          // Get payments for THIS student's fee plan (same filter as /account page)
-          const paymentSum = await FeePayment.aggregate([
-            {
-              $match: {
-                student_id: s._id,
-                fee_plan_id: feePlan._id,
-              },
-            },
-            { $group: { _id: null, total: { $sum: "$paid_amount" } } },
-          ]);
-          paid = round2(paymentSum[0]?.total || 0);
-        } else {
-          // Fallback: no fee plan
-          const course = cid ? courseById.get(cid) : undefined;
-          if (course && course.course_fee) {
-            const courseFee = course.course_fee;
-            const gstPercent = course.gst_percent || 0;
-            total = round2(courseFee * (1 + gstPercent / 100));
-          }
-
-          // Count all payments if no fee plan
-          const paymentSum = await FeePayment.aggregate([
-            { $match: { student_id: s._id } },
-            { $group: { _id: null, total: { $sum: "$paid_amount" } } },
-          ]);
-          paid = round2(paymentSum[0]?.total || 0);
-        }
-
-        // Compute percentage safely (capped at 100)
-        const percentage_paid_raw =
-          total > EPS ? Math.round((paid / total) * 100) : 0;
-        const percentage_paid = Math.min(100, Math.max(0, percentage_paid_raw));
-
-        const metadata = {
-          batch_info:
-            bid && batchById.has(bid) ? batchById.get(bid) : undefined,
-          course_info:
-            cid && courseById.has(cid)
-              ? { _id: cid, name: courseById.get(cid).name }
-              : undefined,
-          fee_info: {
-            total: round2(total),
-            paid: round2(paid),
-            percentage_paid,
+      // Build maps for quick access
+      const batchById = new Map(
+        batchesDocs.map((b) => [
+          String(b._id),
+          { _id: String(b._id), name: b.name, course_id: b.course_id },
+        ]),
+      );
+      const feePlanByBatch = new Map(
+        feePlansDocs.map((fp) => [
+          String(fp.batch_id),
+          {
+            _id: fp._id,
+            total_amount: round2(fp.total_amount || 0),
+            discount_types: fp.discount_types || [],
           },
-        };
+        ]),
+      );
+      const courseById = new Map(
+        coursesDocs.map((c) => [
+          String(c._id),
+          {
+            _id: String(c._id),
+            name: c.name,
+            course_fee: round2(c.course_fee || 0),
+            gst_percent: c.gst_percent || 0,
+          },
+        ]),
+      );
 
-        // Return plain object with metadata field appended
-        const obj = s.toObject();
-        obj.metadata = metadata;
-        return obj;
-      }),
-    );
+      // Attach metadata per student
+      const enriched = await Promise.all(
+        students.map(async (s) => {
+          const sid = String(s._id);
+          const bid = s.batch_id ? String(s.batch_id) : undefined;
+          const cid = s.course_id ? String(s.course_id) : undefined;
 
-    res.json({ success: true, students: enriched });
-  } catch (err) {
-    console.error("❌ Error fetching students:", err);
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+          // USE SAME LOGIC AS /account PAGE:
+          // 1. Get student's fee_plan_id (stored on student record)
+          // 2. Calculate: base -> apply student's discount -> add 18% GST
+          // 3. Count payments for that specific fee_plan_id
+
+          let total = 0;
+          let paid = 0;
+          let feePlan = null;
+
+          // First try to get fee plan from student record (like /account page does)
+          if (s.fee_plan_id) {
+            feePlan = feePlansDocs.find(
+              (fp) => String(fp._id) === String(s.fee_plan_id),
+            );
+          }
+
+          // Fallback to batch fee plan if student doesn't have one assigned
+          if (!feePlan && bid) {
+            feePlan = feePlanByBatch.get(bid);
+          }
+
+          if (feePlan && feePlan.total_amount) {
+            // Calculate student's total fee (same as /account page)
+            let studentTotalFee = feePlan.total_amount;
+
+            // Apply student's individual discount
+            if (
+              s.discount_type &&
+              feePlan.discount_types &&
+              Array.isArray(feePlan.discount_types)
+            ) {
+              const selectedDiscount = feePlan.discount_types.find(
+                (d) => d.code === s.discount_type,
+              );
+              if (selectedDiscount && selectedDiscount.discount_percent) {
+                const discountAmount =
+                  studentTotalFee * (selectedDiscount.discount_percent / 100);
+                studentTotalFee = studentTotalFee - discountAmount;
+              }
+            }
+
+            // Add 18% GST to discounted amount (hardcoded like /account page)
+            const tax = studentTotalFee * 0.18;
+            studentTotalFee = studentTotalFee + tax;
+
+            total = round2(studentTotalFee);
+
+            // Get payments for THIS student's fee plan (same filter as /account page)
+            const paymentSum = await FeePayment.aggregate([
+              {
+                $match: {
+                  student_id: s._id,
+                  fee_plan_id: feePlan._id,
+                },
+              },
+              { $group: { _id: null, total: { $sum: "$paid_amount" } } },
+            ]);
+            paid = round2(paymentSum[0]?.total || 0);
+          } else {
+            // Fallback: no fee plan
+            const course = cid ? courseById.get(cid) : undefined;
+            if (course && course.course_fee) {
+              const courseFee = course.course_fee;
+              const gstPercent = course.gst_percent || 0;
+              total = round2(courseFee * (1 + gstPercent / 100));
+            }
+
+            // Count all payments if no fee plan
+            const paymentSum = await FeePayment.aggregate([
+              { $match: { student_id: s._id } },
+              { $group: { _id: null, total: { $sum: "$paid_amount" } } },
+            ]);
+            paid = round2(paymentSum[0]?.total || 0);
+          }
+
+          // Compute percentage safely (capped at 100)
+          const percentage_paid_raw =
+            total > EPS ? Math.round((paid / total) * 100) : 0;
+          const percentage_paid = Math.min(
+            100,
+            Math.max(0, percentage_paid_raw),
+          );
+
+          const metadata = {
+            batch_info:
+              bid && batchById.has(bid) ? batchById.get(bid) : undefined,
+            course_info:
+              cid && courseById.has(cid)
+                ? { _id: cid, name: courseById.get(cid).name }
+                : undefined,
+            fee_info: {
+              total: round2(total),
+              paid: round2(paid),
+              percentage_paid,
+            },
+          };
+
+          // Return plain object with metadata field appended
+          const obj = s.toObject();
+          obj.metadata = metadata;
+          return obj;
+        }),
+      );
+
+      res.json({ success: true, students: enriched });
+    } catch (err) {
+      console.error("❌ Error fetching students:", err);
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== BULK UPLOAD ROUTES =====
 
 // Download Excel template with debugging
-app.get("/api/students/template", async (req, res) => {
-  console.log("📥 Template download requested");
+app.get(
+  "/api/students/template",
+  verifyAuth,
+  verifyPermission("canEditStudents"),
+  async (req, res) => {
+    console.log("📥 Template download requested");
 
-  try {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Students");
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Students");
 
-    // Define columns
-    worksheet.columns = [
-      { header: "First Name *", key: "fname", width: 15 },
-      { header: "Last Name *", key: "lname", width: 15 },
-      { header: "Email *", key: "email", width: 25 },
-      { header: "Phone *", key: "phone", width: 15 },
-      { header: "Date of Birth (DD/MM/YYYY)", key: "dob", width: 24 },
-      { header: "Gender (male/female/other) *", key: "gender", width: 25 },
-      { header: "Aadhar (12 digits)", key: "aadhar", width: 15 },
-      { header: "Address", key: "address", width: 30 },
-      { header: "Course Name *", key: "course_name", width: 25 },
-      { header: "Batch Name *", key: "batch_name", width: 25 },
-      { header: "Guardian 1 Name", key: "g1_name", width: 20 },
-      { header: "Guardian 1 Phone", key: "g1_phone", width: 15 },
-      {
-        header: "Guardian 1 Relation (father/mother/guardian)",
-        key: "g1_relation",
-        width: 45,
-      },
-      { header: "Guardian 2 Name", key: "g2_name", width: 20 },
-      { header: "Guardian 2 Phone", key: "g2_phone", width: 15 },
-      { header: "Guardian 2 Relation", key: "g2_relation", width: 35 },
-    ];
+      // Define columns
+      worksheet.columns = [
+        { header: "First Name *", key: "fname", width: 15 },
+        { header: "Last Name *", key: "lname", width: 15 },
+        { header: "Email *", key: "email", width: 25 },
+        { header: "Phone *", key: "phone", width: 15 },
+        { header: "Date of Birth (DD/MM/YYYY)", key: "dob", width: 24 },
+        { header: "Gender (male/female/other) *", key: "gender", width: 25 },
+        { header: "Aadhar (12 digits)", key: "aadhar", width: 15 },
+        { header: "Address", key: "address", width: 30 },
+        { header: "Course Name *", key: "course_name", width: 25 },
+        { header: "Batch Name *", key: "batch_name", width: 25 },
+        { header: "Guardian 1 Name", key: "g1_name", width: 20 },
+        { header: "Guardian 1 Phone", key: "g1_phone", width: 15 },
+        {
+          header: "Guardian 1 Relation (father/mother/guardian)",
+          key: "g1_relation",
+          width: 45,
+        },
+        { header: "Guardian 2 Name", key: "g2_name", width: 20 },
+        { header: "Guardian 2 Phone", key: "g2_phone", width: 15 },
+        { header: "Guardian 2 Relation", key: "g2_relation", width: 35 },
+      ];
 
-    // Add sample row
-    worksheet.addRow({
-      fname: "John",
-      lname: "Doe",
-      email: "john.doe@example.com",
-      phone: "9876543210",
-      dob: "15/01/2005",
-      gender: "male",
-      aadhar: "123456789012",
-      address: "123 Main Street, City",
-      course_name: "Web Dev", // Example course name
-      batch_name: "Batch A", // Example batch name
-      g1_name: "Jane Doe",
-      g1_phone: "9876543211",
-      g1_relation: "mother",
-      g2_name: "",
-      g2_phone: "",
-      g2_relation: "",
-    });
+      // Add sample row
+      worksheet.addRow({
+        fname: "John",
+        lname: "Doe",
+        email: "john.doe@example.com",
+        phone: "9876543210",
+        dob: "15/01/2005",
+        gender: "male",
+        aadhar: "123456789012",
+        address: "123 Main Street, City",
+        course_name: "Web Dev", // Example course name
+        batch_name: "Batch A", // Example batch name
+        g1_name: "Jane Doe",
+        g1_phone: "9876543211",
+        g1_relation: "mother",
+        g2_name: "",
+        g2_phone: "",
+        g2_relation: "",
+      });
 
-    // Style header row
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    };
+      // Style header row
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE0E0E0" },
+      };
 
-    // Write to buffer
-    const buffer = await workbook.xlsx.writeBuffer();
-    console.log("✅ Template generated, size:", buffer.length, "bytes");
+      // Write to buffer
+      const buffer = await workbook.xlsx.writeBuffer();
+      console.log("✅ Template generated, size:", buffer.length, "bytes");
 
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="student_template.xlsx"',
-    );
-    res.send(buffer);
-  } catch (error) {
-    console.error("❌ Template generation error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to generate template",
-      error: error.message,
-    });
-  }
-});
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="student_template.xlsx"',
+      );
+      res.send(buffer);
+    } catch (error) {
+      console.error("❌ Template generation error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate template",
+        error: error.message,
+      });
+    }
+  },
+);
 
 // Bulk upload students with comprehensive debugging
 app.post(
@@ -2134,512 +2262,554 @@ app.post(
 // Send (and reset) login credentials to student
 // For testing and reliability of first-time login, we generate a fresh temporary password,
 // update the user's password to this temp one, and log it to the console.
-app.post("/api/students/:id/send-credentials", async (req, res) => {
-  try {
-    const student = await Student.findById(req.params.id).populate("user_id");
+app.post(
+  "/api/students/:id/send-credentials",
+  verifyAuth,
+  verifyPermission("canEditStudents"),
+  async (req, res) => {
+    try {
+      const student = await Student.findById(req.params.id).populate("user_id");
 
-    if (!student) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
+      if (!student) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Student not found" });
+      }
+
+      // Generate a fresh temporary password and set it for the user's account
+      const user = await User.findById(student.user_id?._id);
+      if (!user) {
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found for student" });
+      }
+
+      const tempPassword = generateTempPassword(user.phone || user.email);
+      user.passwordhash = tempPassword; // Will be hashed by User pre-save hook
+      await user.save();
+
+      const credentials = {
+        email: user.email,
+        phone: user.phone,
+        name: `${student.fname} ${student.lname}`,
+        tempPassword, // include plaintext only in server logs; do not expose to client in production
+      };
+
+      // Log to console so you can see the actual password when triggering from /students page
+      console.log("\n📧 ===== SEND CREDENTIALS =====");
+      console.log("   To:", credentials.name);
+      console.log("   Email:", credentials.email);
+      console.log("   Phone:", credentials.phone);
+      console.log("   Temp Password:", tempPassword);
+      console.log("   Note: Implement email/SMS service here");
+      console.log("================================\n");
+
+      res.json({
+        success: true,
+        message:
+          "Credentials generated and logged to console (email not sent - TODO)",
+        // For security, do NOT send tempPassword in API response. It is only logged server-side.
+        credentials: {
+          email: credentials.email,
+          phone: credentials.phone,
+          name: credentials.name,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    // Generate a fresh temporary password and set it for the user's account
-    const user = await User.findById(student.user_id?._id);
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found for student" });
-    }
-
-    const tempPassword = generateTempPassword(user.phone || user.email);
-    user.passwordhash = tempPassword; // Will be hashed by User pre-save hook
-    await user.save();
-
-    const credentials = {
-      email: user.email,
-      phone: user.phone,
-      name: `${student.fname} ${student.lname}`,
-      tempPassword, // include plaintext only in server logs; do not expose to client in production
-    };
-
-    // Log to console so you can see the actual password when triggering from /students page
-    console.log("\n📧 ===== SEND CREDENTIALS =====");
-    console.log("   To:", credentials.name);
-    console.log("   Email:", credentials.email);
-    console.log("   Phone:", credentials.phone);
-    console.log("   Temp Password:", tempPassword);
-    console.log("   Note: Implement email/SMS service here");
-    console.log("================================\n");
-
-    res.json({
-      success: true,
-      message:
-        "Credentials generated and logged to console (email not sent - TODO)",
-      // For security, do NOT send tempPassword in API response. It is only logged server-side.
-      credentials: {
-        email: credentials.email,
-        phone: credentials.phone,
-        name: credentials.name,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Get single student by ID
-app.get("/api/students/:id", async (req, res) => {
-  try {
-    const student = await Student.findById(req.params.id).populate(
-      "user_id",
-      "email phone status last_login",
-    );
-
-    if (!student) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
-    }
-
-    res.json({ success: true, student });
-  } catch (err) {
-    // FIX: previously missing handler caused a syntax error
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Update student
-app.put("/api/students/:id", async (req, res) => {
-  try {
-    const {
-      fname,
-      lname,
-      email,
-      phone,
-      dob,
-      gender,
-      aadhar,
-      address,
-      course_id,
-      batch_id,
-      fee_status,
-      fee_plan_id,
-      discount_type,
-      guardians = [],
-    } = req.body;
-
-    const student = await Student.findById(req.params.id);
-    if (!student) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
-    }
-
-    // Update student fields only if provided
-    if (fname !== undefined) student.fname = fname;
-    if (lname !== undefined) student.lname = lname;
-    if (dob !== undefined) student.dob = dob;
-    if (gender !== undefined) student.gender = gender;
-    if (aadhar !== undefined) {
-      const norm =
-        aadhar === null || aadhar === undefined
-          ? undefined
-          : String(aadhar).trim() === ""
-            ? undefined
-            : String(aadhar).trim();
-      student.aadhar = norm;
-    }
-    if (address !== undefined) student.address = address;
-    if (course_id !== undefined) student.course_id = course_id;
-    if (batch_id !== undefined) student.batch_id = batch_id;
-    if (fee_status !== undefined) student.fee_status = fee_status;
-    if (fee_plan_id !== undefined) student.fee_plan_id = fee_plan_id;
-    if (discount_type !== undefined) student.discount_type = discount_type;
-
-    await student.save();
-
-    // Update user details if provided
-    const userUpdates = {};
-    if (email !== undefined) userUpdates.email = email;
-    if (phone !== undefined) userUpdates.phone = phone;
-    if (fname !== undefined) userUpdates.fname = fname;
-    if (lname !== undefined) userUpdates.lname = lname;
-
-    if (Object.keys(userUpdates).length > 0) {
-      await User.findByIdAndUpdate(student.user_id, userUpdates);
-    }
-
-    // Handle guardians/parents updates
-    if (guardians && Array.isArray(guardians) && guardians.length > 0) {
-      // Get existing parents for this student
-      const existingParents = await Parent.find({ student_id: student._id });
-      const existingParentPhones = existingParents.map((p) =>
-        p.user_id ? User.findById(p.user_id).then((u) => u?.phone) : null,
+app.get(
+  "/api/students/:id",
+  verifyAuth,
+  verifyPermission("canViewStudents"),
+  async (req, res) => {
+    try {
+      const student = await Student.findById(req.params.id).populate(
+        "user_id",
+        "email phone status last_login",
       );
 
-      // Process each guardian from the form
-      const updatedParents = [];
-      for (const guardian of guardians) {
-        if (guardian.name && guardian.phone && guardian.relationship) {
-          try {
-            // Check if parent already exists for this student
-            let existingParent = null;
-            for (const parent of existingParents) {
-              const parentUser = await User.findById(parent.user_id);
-              if (parentUser && parentUser.phone === guardian.phone) {
-                existingParent = parent;
-                break;
-              }
-            }
+      if (!student) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Student not found" });
+      }
 
-            if (existingParent) {
-              // Update existing parent
-              const parentUser = await User.findById(existingParent.user_id);
-              if (parentUser) {
-                parentUser.fname = guardian.name.split(" ")[0];
-                parentUser.lname =
+      res.json({ success: true, student });
+    } catch (err) {
+      // FIX: previously missing handler caused a syntax error
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
+
+// Update student
+app.put(
+  "/api/students/:id",
+  verifyAuth,
+  verifyPermission("canEditStudents"),
+  async (req, res) => {
+    try {
+      const {
+        fname,
+        lname,
+        email,
+        phone,
+        dob,
+        gender,
+        aadhar,
+        address,
+        course_id,
+        batch_id,
+        fee_status,
+        fee_plan_id,
+        discount_type,
+        guardians = [],
+      } = req.body;
+
+      const student = await Student.findById(req.params.id);
+      if (!student) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Student not found" });
+      }
+
+      // Update student fields only if provided
+      if (fname !== undefined) student.fname = fname;
+      if (lname !== undefined) student.lname = lname;
+      if (dob !== undefined) student.dob = dob;
+      if (gender !== undefined) student.gender = gender;
+      if (aadhar !== undefined) {
+        const norm =
+          aadhar === null || aadhar === undefined
+            ? undefined
+            : String(aadhar).trim() === ""
+              ? undefined
+              : String(aadhar).trim();
+        student.aadhar = norm;
+      }
+      if (address !== undefined) student.address = address;
+      if (course_id !== undefined) student.course_id = course_id;
+      if (batch_id !== undefined) student.batch_id = batch_id;
+      if (fee_status !== undefined) student.fee_status = fee_status;
+      if (fee_plan_id !== undefined) student.fee_plan_id = fee_plan_id;
+      if (discount_type !== undefined) student.discount_type = discount_type;
+
+      await student.save();
+
+      // Update user details if provided
+      const userUpdates = {};
+      if (email !== undefined) userUpdates.email = email;
+      if (phone !== undefined) userUpdates.phone = phone;
+      if (fname !== undefined) userUpdates.fname = fname;
+      if (lname !== undefined) userUpdates.lname = lname;
+
+      if (Object.keys(userUpdates).length > 0) {
+        await User.findByIdAndUpdate(student.user_id, userUpdates);
+      }
+
+      // Handle guardians/parents updates
+      if (guardians && Array.isArray(guardians) && guardians.length > 0) {
+        // Get existing parents for this student
+        const existingParents = await Parent.find({ student_id: student._id });
+        const existingParentPhones = existingParents.map((p) =>
+          p.user_id ? User.findById(p.user_id).then((u) => u?.phone) : null,
+        );
+
+        // Process each guardian from the form
+        const updatedParents = [];
+        for (const guardian of guardians) {
+          if (guardian.name && guardian.phone && guardian.relationship) {
+            try {
+              // Check if parent already exists for this student
+              let existingParent = null;
+              for (const parent of existingParents) {
+                const parentUser = await User.findById(parent.user_id);
+                if (parentUser && parentUser.phone === guardian.phone) {
+                  existingParent = parent;
+                  break;
+                }
+              }
+
+              if (existingParent) {
+                // Update existing parent
+                const parentUser = await User.findById(existingParent.user_id);
+                if (parentUser) {
+                  parentUser.fname = guardian.name.split(" ")[0];
+                  parentUser.lname =
+                    guardian.name.split(" ").slice(1).join(" ") ||
+                    guardian.name.split(" ")[0];
+                  await parentUser.save();
+                }
+
+                existingParent.fname = guardian.name.split(" ")[0];
+                existingParent.lname =
                   guardian.name.split(" ").slice(1).join(" ") ||
                   guardian.name.split(" ")[0];
-                await parentUser.save();
-              }
+                existingParent.relation = guardian.relationship;
+                await existingParent.save();
+                updatedParents.push(existingParent);
+              } else {
+                // Create new parent
+                let parentUser = await User.findOne({ phone: guardian.phone });
 
-              existingParent.fname = guardian.name.split(" ")[0];
-              existingParent.lname =
-                guardian.name.split(" ").slice(1).join(" ") ||
-                guardian.name.split(" ")[0];
-              existingParent.relation = guardian.relationship;
-              await existingParent.save();
-              updatedParents.push(existingParent);
-            } else {
-              // Create new parent
-              let parentUser = await User.findOne({ phone: guardian.phone });
+                if (!parentUser) {
+                  const defaultPassword = generateTempPassword(guardian.phone);
+                  parentUser = new User({
+                    fname: guardian.name.split(" ")[0],
+                    lname:
+                      guardian.name.split(" ").slice(1).join(" ") ||
+                      guardian.name.split(" ")[0],
+                    email: guardian.email || `${guardian.phone}@parent.temp`,
+                    phone: guardian.phone,
+                    passwordhash: defaultPassword,
+                    roleid: "parent",
+                    role: "Parent",
+                    status: true,
+                  });
+                  await parentUser.save();
+                }
 
-              if (!parentUser) {
-                const defaultPassword = generateTempPassword(guardian.phone);
-                parentUser = new User({
-                  fname: guardian.name.split(" ")[0],
-                  lname:
-                    guardian.name.split(" ").slice(1).join(" ") ||
-                    guardian.name.split(" ")[0],
-                  email: guardian.email || `${guardian.phone}@parent.temp`,
-                  phone: guardian.phone,
-                  passwordhash: defaultPassword,
-                  roleid: "parent",
-                  role: "Parent",
-                  status: true,
+                const parentProfile = new Parent({
+                  user_id: parentUser._id,
+                  fname: parentUser.fname,
+                  lname: parentUser.lname,
+                  student_id: student._id,
+                  relation: guardian.relationship,
                 });
-                await parentUser.save();
+                await parentProfile.save();
+                updatedParents.push(parentProfile);
               }
-
-              const parentProfile = new Parent({
-                user_id: parentUser._id,
-                fname: parentUser.fname,
-                lname: parentUser.lname,
-                student_id: student._id,
-                relation: guardian.relationship,
-              });
-              await parentProfile.save();
-              updatedParents.push(parentProfile);
+            } catch (parentErr) {
+              console.error("Error updating/creating parent:", parentErr);
             }
-          } catch (parentErr) {
-            console.error("Error updating/creating parent:", parentErr);
+          }
+        }
+
+        // Remove parents that are no longer in the guardians list
+        const updatedPhones = guardians.map((g) => g.phone);
+        for (const parent of existingParents) {
+          const parentUser = await User.findById(parent.user_id);
+          if (parentUser && !updatedPhones.includes(parentUser.phone)) {
+            await Parent.findByIdAndDelete(parent._id);
           }
         }
       }
 
-      // Remove parents that are no longer in the guardians list
-      const updatedPhones = guardians.map((g) => g.phone);
-      for (const parent of existingParents) {
-        const parentUser = await User.findById(parent.user_id);
-        if (parentUser && !updatedPhones.includes(parentUser.phone)) {
-          await Parent.findByIdAndDelete(parent._id);
-        }
-      }
+      res.json({ success: true, message: "Student updated", student });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, message: "Student updated", student });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Delete student (also deletes associated user)
-app.delete("/api/students/:id", async (req, res) => {
-  try {
-    const student = await Student.findByIdAndDelete(req.params.id);
+app.delete(
+  "/api/students/:id",
+  verifyAuth,
+  verifyPermission("canEditStudents"),
+  async (req, res) => {
+    try {
+      const student = await Student.findByIdAndDelete(req.params.id);
 
-    if (!student) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
+      if (!student) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Student not found" });
+      }
+
+      // Note: User account is NOT deleted - they can still login
+      // If you want to delete user too, uncomment:
+      // await User.findByIdAndDelete(student.user_id);
+
+      res.json({ success: true, message: "Student profile deleted" });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    // Note: User account is NOT deleted - they can still login
-    // If you want to delete user too, uncomment:
-    // await User.findByIdAndDelete(student.user_id);
-
-    res.json({ success: true, message: "Student profile deleted" });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // ===== TEACHER ROUTES =====
 
 // Create teacher (Admin only) - check or create user, then profile
-app.post("/api/teachers", async (req, res) => {
-  try {
-    // Get branchId from header or user's primaryBranch
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+app.post(
+  "/api/teachers",
+  verifyAuth,
+  verifyPermission("canEditTeachers"),
+  async (req, res) => {
+    try {
+      // Get branchId from header or user's primaryBranch
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
 
-    const {
-      fname,
-      lname,
-      email,
-      phone,
-      subjects,
-      emp_no,
-      aadhar,
-      address,
-      p_address,
-      salary,
-      joining_date,
-      pan_number,
-      bank_account,
-      bank_ifsc,
-      highest_degree,
-      batch_id, // ADD THIS - single batch from form
-      assigned_batches, // ADD THIS - array of batch IDs if sending multiple
-    } = req.body;
-
-    // 1) Check or create user
-    let user = null;
-    let createdUser = false;
-    let tempPassword;
-    if (email || phone) {
-      user = await User.findOne({
-        $or: [email ? { email } : null, phone ? { phone } : null].filter(
-          Boolean,
-        ),
-      });
-    }
-    if (!user) {
-      const names = deriveNames(fname, lname);
-      tempPassword = generateTempPassword(phone);
-      const newUser = new User({
-        fname: names.fname,
-        lname: names.lname,
+      const {
+        fname,
+        lname,
         email,
         phone,
-        passwordhash: tempPassword,
-        roleid: "teacher",
-        role: "Teacher",
-        status: true,
-      });
-      try {
-        user = await newUser.save();
-        createdUser = true;
-        // TODO: Send email/SMS with login credentials to the user
-        console.log("[TEACHER] Created user; credentials placeholder:", {
-          email,
-          phone,
-          tempPassword,
-        });
-      } catch (e) {
-        return res.status(400).json({
-          success: false,
-          message: e?.message || "Failed to create user",
+        subjects,
+        emp_no,
+        aadhar,
+        address,
+        p_address,
+        salary,
+        joining_date,
+        pan_number,
+        bank_account,
+        bank_ifsc,
+        highest_degree,
+        batch_id, // ADD THIS - single batch from form
+        assigned_batches, // ADD THIS - array of batch IDs if sending multiple
+      } = req.body;
+
+      // 1) Check or create user
+      let user = null;
+      let createdUser = false;
+      let tempPassword;
+      if (email || phone) {
+        user = await User.findOne({
+          $or: [email ? { email } : null, phone ? { phone } : null].filter(
+            Boolean,
+          ),
         });
       }
-    } else if (user.roleid !== "teacher") {
-      return res
-        .status(400)
-        .json({ success: false, message: "User exists with a different role" });
-    }
+      if (!user) {
+        const names = deriveNames(fname, lname);
+        tempPassword = generateTempPassword(phone);
+        const newUser = new User({
+          fname: names.fname,
+          lname: names.lname,
+          email,
+          phone,
+          passwordhash: tempPassword,
+          roleid: "teacher",
+          role: "Teacher",
+          status: true,
+        });
+        try {
+          user = await newUser.save();
+          createdUser = true;
+          // TODO: Send email/SMS with login credentials to the user
+          console.log("[TEACHER] Created user; credentials placeholder:", {
+            email,
+            phone,
+            tempPassword,
+          });
+        } catch (e) {
+          return res.status(400).json({
+            success: false,
+            message: e?.message || "Failed to create user",
+          });
+        }
+      } else if (user.roleid !== "teacher") {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "User exists with a different role",
+          });
+      }
 
-    const existingTeacher = await Teacher.findOne({ user_id: user._id });
-    if (existingTeacher) {
-      return res.status(400).json({
-        success: false,
-        message: "Teacher profile already exists for this user",
+      const existingTeacher = await Teacher.findOne({ user_id: user._id });
+      if (existingTeacher) {
+        return res.status(400).json({
+          success: false,
+          message: "Teacher profile already exists for this user",
+        });
+      }
+
+      // Generate employee number if not provided
+      const empNo =
+        emp_no ||
+        `TCH${String((await Teacher.countDocuments()) + 1).padStart(4, "0")}`;
+
+      // Prepare assigned batches array
+      let batchesArray = [];
+      if (batch_id) {
+        batchesArray = [batch_id]; // Single batch from form
+      } else if (assigned_batches && Array.isArray(assigned_batches)) {
+        batchesArray = assigned_batches; // Multiple batches
+      }
+
+      const newTeacher = new Teacher({
+        branchId, // Auto-assign branch
+        user_id: user._id,
+        fname: user.fname,
+        lname: user.lname,
+        subjects,
+        emp_no: empNo,
+        aadhar: aadhar && aadhar.trim() ? aadhar.trim() : undefined,
+        address,
+        p_address,
+        salary,
+        joining_date: joining_date || new Date(),
+        pan_number:
+          pan_number && pan_number.trim() ? pan_number.trim() : undefined,
+        bank_account:
+          bank_account && bank_account.trim() ? bank_account.trim() : undefined,
+        bank_ifsc: bank_ifsc && bank_ifsc.trim() ? bank_ifsc.trim() : undefined,
+        highest_degree:
+          highest_degree && highest_degree.trim()
+            ? highest_degree.trim()
+            : undefined,
+        assigned_batches: batchesArray,
       });
-    }
 
-    // Generate employee number if not provided
-    const empNo =
-      emp_no ||
-      `TCH${String((await Teacher.countDocuments()) + 1).padStart(4, "0")}`;
+      await newTeacher.save();
 
-    // Prepare assigned batches array
-    let batchesArray = [];
-    if (batch_id) {
-      batchesArray = [batch_id]; // Single batch from form
-    } else if (assigned_batches && Array.isArray(assigned_batches)) {
-      batchesArray = assigned_batches; // Multiple batches
-    }
-
-    const newTeacher = new Teacher({
-      branchId, // Auto-assign branch
-      user_id: user._id,
-      fname: user.fname,
-      lname: user.lname,
-      subjects,
-      emp_no: empNo,
-      aadhar: aadhar && aadhar.trim() ? aadhar.trim() : undefined,
-      address,
-      p_address,
-      salary,
-      joining_date: joining_date || new Date(),
-      pan_number:
-        pan_number && pan_number.trim() ? pan_number.trim() : undefined,
-      bank_account:
-        bank_account && bank_account.trim() ? bank_account.trim() : undefined,
-      bank_ifsc: bank_ifsc && bank_ifsc.trim() ? bank_ifsc.trim() : undefined,
-      highest_degree:
-        highest_degree && highest_degree.trim()
-          ? highest_degree.trim()
+      res.status(201).json({
+        success: true,
+        message: createdUser
+          ? "Teacher and user account created. Login info will be sent by email."
+          : "Teacher profile created successfully",
+        teacher: newTeacher,
+        credentials: createdUser
+          ? { email: user.email, phone: user.phone, tempPassword }
           : undefined,
-      assigned_batches: batchesArray,
-    });
-
-    await newTeacher.save();
-
-    res.status(201).json({
-      success: true,
-      message: createdUser
-        ? "Teacher and user account created. Login info will be sent by email."
-        : "Teacher profile created successfully",
-      teacher: newTeacher,
-      credentials: createdUser
-        ? { email: user.email, phone: user.phone, tempPassword }
-        : undefined,
-    });
-  } catch (err) {
-    console.error("Error creating teacher:", err);
-    res.status(400).json({
-      success: false,
-      message: err.message,
-    });
-  }
-});
-
-// Get all teachers with metadata
-// Get all teachers with metadata
-app.get("/api/teachers", async (req, res) => {
-  console.log("📋 GET /api/teachers called");
-  try {
-    // Add branch filter
-    const filter = {};
-    const isSuperAdmin = req.user?.isSuperAdmin;
-    const branchId = req.headers["x-branch-id"];
-
-    if (branchId) {
-      filter.branchId = branchId;
-    } else if (!isSuperAdmin && req.user?.primaryBranch) {
-      filter.branchId = req.user.primaryBranch;
-    }
-
-    const teachers = await Teacher.find(filter)
-      .populate("user_id", "fname lname email phone status lastlogin")
-      .populate({
-        path: "assigned_batches",
-        select: "name",
-        model: "Batches", // ADD THIS - specifies to use the Batches model
       });
+    } catch (err) {
+      console.error("Error creating teacher:", err);
+      res.status(400).json({
+        success: false,
+        message: err.message,
+      });
+    }
+  },
+);
 
-    // Enrich with metadata
-    const enrichedTeachers = teachers.map((teacher) => ({
-      ...teacher.toObject(),
-      metadata: {
-        assigned_batches_info: teacher.assigned_batches || [],
-        monthly_logsheet_status: teacher.monthly_logsheet_status || "pending",
-        syllabus_completion: teacher.syllabus_completion || 0,
-      },
-    }));
+// Get all teachers with metadata
+// Get all teachers with metadata
+app.get(
+  "/api/teachers",
+  verifyAuth,
+  verifyPermission("canViewTeachers"),
+  async (req, res) => {
+    console.log("📋 GET /api/teachers called");
+    try {
+      // Add branch filter
+      const filter = {};
+      const isSuperAdmin = req.user?.isSuperAdmin;
+      const branchId = req.headers["x-branch-id"];
 
-    res.json({ success: true, teachers: enrichedTeachers });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      if (branchId) {
+        filter.branchId = branchId;
+      } else if (!isSuperAdmin && req.user?.primaryBranch) {
+        filter.branchId = req.user.primaryBranch;
+      }
+
+      const teachers = await Teacher.find(filter)
+        .populate("user_id", "fname lname email phone status lastlogin")
+        .populate({
+          path: "assigned_batches",
+          select: "name",
+          model: "Batches", // ADD THIS - specifies to use the Batches model
+        });
+
+      // Enrich with metadata
+      const enrichedTeachers = teachers.map((teacher) => ({
+        ...teacher.toObject(),
+        metadata: {
+          assigned_batches_info: teacher.assigned_batches || [],
+          monthly_logsheet_status: teacher.monthly_logsheet_status || "pending",
+          syllabus_completion: teacher.syllabus_completion || 0,
+        },
+      }));
+
+      res.json({ success: true, teachers: enrichedTeachers });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== TEACHER BULK UPLOAD ROUTES =====
 
 // Download Teacher template
-app.get("/api/teachers/template", async (req, res) => {
-  console.log("📥 Teacher template download requested");
+app.get(
+  "/api/teachers/template",
+  verifyAuth,
+  verifyPermission("canEditTeachers"),
+  async (req, res) => {
+    console.log("📥 Teacher template download requested");
 
-  try {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Teachers");
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Teachers");
 
-    worksheet.columns = [
-      { header: "First Name *", key: "fname", width: 15 },
-      { header: "Last Name *", key: "lname", width: 15 },
-      { header: "Email *", key: "email", width: 25 },
-      { header: "Phone *", key: "phone", width: 15 },
-      { header: "Date of Birth (DD/MM/YYYY)", key: "dob", width: 24 },
-      { header: "Subject", key: "subject", width: 20 },
-      { header: "Employee Number", key: "emp_no", width: 15 },
-      { header: "Aadhar (12 digits)", key: "aadhar", width: 15 },
-      { header: "PAN Number", key: "pan_number", width: 15 },
-      { header: "Address", key: "address", width: 30 },
-      { header: "Permanent Address", key: "p_address", width: 30 },
-      { header: "Salary", key: "salary", width: 12 },
-      { header: "Bank Account", key: "bank_account", width: 20 },
-      { header: "Bank IFSC", key: "bank_ifsc", width: 15 },
-      { header: "Highest Degree", key: "highest_degree", width: 20 },
-      { header: "Batch Name", key: "batch_name", width: 25 },
-    ];
+      worksheet.columns = [
+        { header: "First Name *", key: "fname", width: 15 },
+        { header: "Last Name *", key: "lname", width: 15 },
+        { header: "Email *", key: "email", width: 25 },
+        { header: "Phone *", key: "phone", width: 15 },
+        { header: "Date of Birth (DD/MM/YYYY)", key: "dob", width: 24 },
+        { header: "Subject", key: "subject", width: 20 },
+        { header: "Employee Number", key: "emp_no", width: 15 },
+        { header: "Aadhar (12 digits)", key: "aadhar", width: 15 },
+        { header: "PAN Number", key: "pan_number", width: 15 },
+        { header: "Address", key: "address", width: 30 },
+        { header: "Permanent Address", key: "p_address", width: 30 },
+        { header: "Salary", key: "salary", width: 12 },
+        { header: "Bank Account", key: "bank_account", width: 20 },
+        { header: "Bank IFSC", key: "bank_ifsc", width: 15 },
+        { header: "Highest Degree", key: "highest_degree", width: 20 },
+        { header: "Batch Name", key: "batch_name", width: 25 },
+      ];
 
-    worksheet.addRow({
-      fname: "Rajesh",
-      lname: "Kumar",
-      email: "rajesh.kumar@example.com",
-      phone: "9876543210",
-      dob: "15/05/1985",
-      subject: "Mathematics",
-      emp_no: "TCH001",
-      aadhar: "123456789012",
-      pan_number: "ABCDE1234F",
-      address: "123 MG Road, Bangalore",
-      p_address: "456 Main Street, Delhi",
-      salary: "50000",
-      bank_account: "1234567890",
-      bank_ifsc: "HDFC0001234",
-      highest_degree: "M.Sc Mathematics",
-      batch_name: "Batch A", // Example batch name
-    });
+      worksheet.addRow({
+        fname: "Rajesh",
+        lname: "Kumar",
+        email: "rajesh.kumar@example.com",
+        phone: "9876543210",
+        dob: "15/05/1985",
+        subject: "Mathematics",
+        emp_no: "TCH001",
+        aadhar: "123456789012",
+        pan_number: "ABCDE1234F",
+        address: "123 MG Road, Bangalore",
+        p_address: "456 Main Street, Delhi",
+        salary: "50000",
+        bank_account: "1234567890",
+        bank_ifsc: "HDFC0001234",
+        highest_degree: "M.Sc Mathematics",
+        batch_name: "Batch A", // Example batch name
+      });
 
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    };
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE0E0E0" },
+      };
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    console.log("✅ Teacher template generated, size:", buffer.length, "bytes");
+      const buffer = await workbook.xlsx.writeBuffer();
+      console.log(
+        "✅ Teacher template generated, size:",
+        buffer.length,
+        "bytes",
+      );
 
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="teacher_template.xlsx"',
-    );
-    res.send(buffer);
-  } catch (error) {
-    console.error("❌ Teacher template generation error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to generate template",
-      error: error.message,
-    });
-  }
-});
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="teacher_template.xlsx"',
+      );
+      res.send(buffer);
+    } catch (error) {
+      console.error("❌ Teacher template generation error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate template",
+        error: error.message,
+      });
+    }
+  },
+);
 
 // Bulk upload teachers
 app.post(
@@ -2874,537 +3044,592 @@ app.post(
 // Send (and reset) credentials to teacher
 // Mirrors student send-credentials: generate a fresh temporary password,
 // set it for the teacher's user account, and log the plaintext to console.
-app.post("/api/teachers/:id/send-credentials", async (req, res) => {
-  try {
-    const teacher = await Teacher.findById(req.params.id).populate("user_id");
+app.post(
+  "/api/teachers/:id/send-credentials",
+  verifyAuth,
+  verifyPermission("canEditTeachers"),
+  async (req, res) => {
+    try {
+      const teacher = await Teacher.findById(req.params.id).populate("user_id");
 
-    if (!teacher) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Teacher not found" });
+      if (!teacher) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Teacher not found" });
+      }
+
+      const user = await User.findById(teacher.user_id?._id);
+      if (!user) {
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found for teacher" });
+      }
+
+      const tempPassword = generateTempPassword(user.phone || user.email);
+      user.passwordhash = tempPassword; // Will be hashed by User pre-save hook
+      await user.save();
+
+      console.log("\n📧 ===== SEND TEACHER CREDENTIALS =====");
+      console.log("   Employee:", teacher.emp_no);
+      console.log("   Email:", user.email);
+      console.log("   Phone:", user.phone);
+      console.log("   Temp Password:", tempPassword);
+      console.log("   Note: Implement email/SMS service here");
+      console.log("========================================\n");
+
+      res.json({
+        success: true,
+        message: "Teacher credentials generated and logged to console",
+        credentials: {
+          email: user.email,
+          phone: user.phone,
+          empNo: teacher.emp_no,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    const user = await User.findById(teacher.user_id?._id);
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found for teacher" });
-    }
-
-    const tempPassword = generateTempPassword(user.phone || user.email);
-    user.passwordhash = tempPassword; // Will be hashed by User pre-save hook
-    await user.save();
-
-    console.log("\n📧 ===== SEND TEACHER CREDENTIALS =====");
-    console.log("   Employee:", teacher.emp_no);
-    console.log("   Email:", user.email);
-    console.log("   Phone:", user.phone);
-    console.log("   Temp Password:", tempPassword);
-    console.log("   Note: Implement email/SMS service here");
-    console.log("========================================\n");
-
-    res.json({
-      success: true,
-      message: "Teacher credentials generated and logged to console",
-      credentials: {
-        email: user.email,
-        phone: user.phone,
-        empNo: teacher.emp_no,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Get single teacher (clean)
-app.get("/api/teachers/:id", async (req, res) => {
-  try {
-    const teacher = await Teacher.findById(req.params.id)
-      .populate("user_id", "f_name l_name email phone status")
-      .populate({
-        path: "assigned_batches",
-        select: "name",
-        model: "Batches",
-      });
+app.get(
+  "/api/teachers/:id",
+  verifyAuth,
+  verifyPermission("canViewTeachers"),
+  async (req, res) => {
+    try {
+      const teacher = await Teacher.findById(req.params.id)
+        .populate("user_id", "f_name l_name email phone status")
+        .populate({
+          path: "assigned_batches",
+          select: "name",
+          model: "Batches",
+        });
 
-    if (!teacher) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Teacher not found" });
+      if (!teacher) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Teacher not found" });
+      }
+
+      res.json({ success: true, teacher });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, teacher });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Update teacher
 // Update teacher
-app.put("/api/teachers/:id", async (req, res) => {
-  try {
-    const {
-      subjects,
-      aadhar,
-      address,
-      p_address,
-      salary,
-      pan_number,
-      bank_account,
-      bank_ifsc,
-      highest_degree,
-      batch_id,
-      assigned_batches,
-      monthly_logsheet_status,
-      syllabus_completion,
-    } = req.body;
+app.put(
+  "/api/teachers/:id",
+  verifyAuth,
+  verifyPermission("canEditTeachers"),
+  async (req, res) => {
+    try {
+      const {
+        subjects,
+        aadhar,
+        address,
+        p_address,
+        salary,
+        pan_number,
+        bank_account,
+        bank_ifsc,
+        highest_degree,
+        batch_id,
+        assigned_batches,
+        monthly_logsheet_status,
+        syllabus_completion,
+      } = req.body;
 
-    const teacher = await Teacher.findById(req.params.id);
+      const teacher = await Teacher.findById(req.params.id);
 
-    if (!teacher) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Teacher not found" });
+      if (!teacher) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Teacher not found" });
+      }
+
+      // Update fields if provided
+      if (subjects !== undefined) teacher.subjects = subjects;
+      if (aadhar !== undefined)
+        teacher.aadhar = aadhar && aadhar.trim() ? aadhar.trim() : undefined;
+      if (address !== undefined) teacher.address = address;
+      if (p_address !== undefined) teacher.p_address = p_address;
+      if (salary !== undefined) teacher.salary = salary;
+      if (pan_number !== undefined)
+        teacher.pan_number =
+          pan_number && pan_number.trim() ? pan_number.trim() : undefined;
+      if (bank_account !== undefined)
+        teacher.bank_account =
+          bank_account && bank_account.trim() ? bank_account.trim() : undefined;
+      if (bank_ifsc !== undefined)
+        teacher.bank_ifsc =
+          bank_ifsc && bank_ifsc.trim() ? bank_ifsc.trim() : undefined;
+      if (highest_degree !== undefined)
+        teacher.highest_degree =
+          highest_degree && highest_degree.trim()
+            ? highest_degree.trim()
+            : undefined;
+      if (monthly_logsheet_status !== undefined)
+        teacher.monthly_logsheet_status = monthly_logsheet_status;
+      if (syllabus_completion !== undefined)
+        teacher.syllabus_completion = syllabus_completion;
+
+      // Handle batch assignment
+      if (batch_id) {
+        teacher.assigned_batches = [batch_id];
+      } else if (assigned_batches !== undefined) {
+        teacher.assigned_batches = assigned_batches;
+      }
+
+      await teacher.save();
+
+      res.json({ success: true, message: "Teacher updated", teacher });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    // Update fields if provided
-    if (subjects !== undefined) teacher.subjects = subjects;
-    if (aadhar !== undefined)
-      teacher.aadhar = aadhar && aadhar.trim() ? aadhar.trim() : undefined;
-    if (address !== undefined) teacher.address = address;
-    if (p_address !== undefined) teacher.p_address = p_address;
-    if (salary !== undefined) teacher.salary = salary;
-    if (pan_number !== undefined)
-      teacher.pan_number =
-        pan_number && pan_number.trim() ? pan_number.trim() : undefined;
-    if (bank_account !== undefined)
-      teacher.bank_account =
-        bank_account && bank_account.trim() ? bank_account.trim() : undefined;
-    if (bank_ifsc !== undefined)
-      teacher.bank_ifsc =
-        bank_ifsc && bank_ifsc.trim() ? bank_ifsc.trim() : undefined;
-    if (highest_degree !== undefined)
-      teacher.highest_degree =
-        highest_degree && highest_degree.trim()
-          ? highest_degree.trim()
-          : undefined;
-    if (monthly_logsheet_status !== undefined)
-      teacher.monthly_logsheet_status = monthly_logsheet_status;
-    if (syllabus_completion !== undefined)
-      teacher.syllabus_completion = syllabus_completion;
-
-    // Handle batch assignment
-    if (batch_id) {
-      teacher.assigned_batches = [batch_id];
-    } else if (assigned_batches !== undefined) {
-      teacher.assigned_batches = assigned_batches;
-    }
-
-    await teacher.save();
-
-    res.json({ success: true, message: "Teacher updated", teacher });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Delete teacher
-app.delete("/api/teachers/:id", async (req, res) => {
-  try {
-    const teacher = await Teacher.findByIdAndDelete(req.params.id);
+app.delete(
+  "/api/teachers/:id",
+  verifyAuth,
+  verifyPermission("canEditTeachers"),
+  async (req, res) => {
+    try {
+      const teacher = await Teacher.findByIdAndDelete(req.params.id);
 
-    if (!teacher) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Teacher not found" });
+      if (!teacher) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Teacher not found" });
+      }
+
+      res.json({ success: true, message: "Teacher profile deleted" });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, message: "Teacher profile deleted" });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // ===== PARENT ROUTES =====
 
 // Get all parents with details
-app.get("/api/parents", async (req, res) => {
-  try {
-    // Add branch filter
-    const filter = {};
-    const isSuperAdmin = req.user?.isSuperAdmin;
-    const branchId = req.headers["x-branch-id"];
+app.get(
+  "/api/parents",
+  verifyAuth,
+  verifyPermission("canViewParents"),
+  async (req, res) => {
+    try {
+      // Add branch filter
+      const filter = {};
+      const isSuperAdmin = req.user?.isSuperAdmin;
+      const branchId = req.headers["x-branch-id"];
 
-    if (branchId) {
-      filter.branchId = branchId;
-    } else if (!isSuperAdmin && req.user?.primaryBranch) {
-      filter.branchId = req.user.primaryBranch;
+      if (branchId) {
+        filter.branchId = branchId;
+      } else if (!isSuperAdmin && req.user?.primaryBranch) {
+        filter.branchId = req.user.primaryBranch;
+      }
+
+      const parents = await Parent.find(filter)
+        .populate("user_id", "fname lname email phone status")
+        .populate({
+          path: "student_id",
+          select: "fname lname user_id",
+          populate: {
+            path: "user_id",
+            select: "email",
+          },
+        });
+
+      res.json({ success: true, parents });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    const parents = await Parent.find(filter)
-      .populate("user_id", "fname lname email phone status")
-      .populate({
-        path: "student_id",
-        select: "fname lname user_id",
-        populate: {
-          path: "user_id",
-          select: "email",
-        },
-      });
-
-    res.json({ success: true, parents });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Get parents by student ID
-app.get("/api/parents/student/:studentId", async (req, res) => {
-  try {
-    const parents = await Parent.find({
-      student_id: req.params.studentId,
-    }).populate("user_id", "fname lname email phone");
+app.get(
+  "/api/parents/student/:studentId",
+  verifyAuth,
+  verifyPermission("canViewParents"),
+  async (req, res) => {
+    try {
+      const parents = await Parent.find({
+        student_id: req.params.studentId,
+      }).populate("user_id", "fname lname email phone");
 
-    res.json({ success: true, parents });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      res.json({ success: true, parents });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Get single parent
-app.get("/api/parents/:id", async (req, res) => {
-  try {
-    const parent = await Parent.findById(req.params.id)
-      .populate("user_id", "fname lname email phone status")
-      .populate("student_id", "fname lname");
+app.get(
+  "/api/parents/:id",
+  verifyAuth,
+  verifyPermission("canViewParents"),
+  async (req, res) => {
+    try {
+      const parent = await Parent.findById(req.params.id)
+        .populate("user_id", "fname lname email phone status")
+        .populate("student_id", "fname lname");
 
-    if (!parent) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Parent not found" });
+      if (!parent) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Parent not found" });
+      }
+
+      res.json({ success: true, parent });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, parent });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Create parent profile
-app.post("/api/parents", async (req, res) => {
-  try {
-    // Get branchId from header or user's primaryBranch
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+app.post(
+  "/api/parents",
+  verifyAuth,
+  verifyPermission("canEditParents"),
+  async (req, res) => {
+    try {
+      // Get branchId from header or user's primaryBranch
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
 
-    const {
-      email,
-      phone,
-      fname,
-      lname,
-      student_id,
-      aadhar,
-      relation,
-      occupation,
-      annual_income,
-      address,
-    } = req.body;
-
-    if (!student_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Student ID is required",
-      });
-    }
-
-    // Check if student exists
-    const student = await Student.findById(student_id);
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: "Student not found",
-      });
-    }
-
-    // Find or create user
-    let user = null;
-    let createdUser = false;
-    let tempPassword;
-    if (email) {
-      user = await User.findOne({ email });
-    } else if (phone) {
-      user = await User.findOne({ phone });
-    }
-
-    // If user doesn't exist, create one
-    if (!user) {
-      tempPassword = generateTempPassword(phone);
-      user = new User({
-        fname: fname,
-        lname: lname,
+      const {
         email,
         phone,
-        passwordhash: tempPassword,
-        roleid: "parent",
-        role: "Parent",
-        status: true,
-      });
-      await user.save();
-      createdUser = true;
-      // TODO: Send email/SMS with login credentials to the user
-      console.log("[PARENT] Created user; credentials placeholder:", {
-        email,
-        phone,
-        tempPassword,
-      });
-    } else {
-      // Check if user has parent role
-      if (user.roleid !== "parent") {
+        fname,
+        lname,
+        student_id,
+        aadhar,
+        relation,
+        occupation,
+        annual_income,
+        address,
+      } = req.body;
+
+      if (!student_id) {
         return res.status(400).json({
           success: false,
-          message: "User must have parent role",
+          message: "Student ID is required",
         });
       }
-    }
 
-    // Check if parent relationship already exists
-    const existingParent = await Parent.findOne({
-      user_id: user._id,
-      student_id,
-      relation,
-    });
+      // Check if student exists
+      const student = await Student.findById(student_id);
+      if (!student) {
+        return res.status(404).json({
+          success: false,
+          message: "Student not found",
+        });
+      }
 
-    if (existingParent) {
-      return res.status(400).json({
+      // Find or create user
+      let user = null;
+      let createdUser = false;
+      let tempPassword;
+      if (email) {
+        user = await User.findOne({ email });
+      } else if (phone) {
+        user = await User.findOne({ phone });
+      }
+
+      // If user doesn't exist, create one
+      if (!user) {
+        tempPassword = generateTempPassword(phone);
+        user = new User({
+          fname: fname,
+          lname: lname,
+          email,
+          phone,
+          passwordhash: tempPassword,
+          roleid: "parent",
+          role: "Parent",
+          status: true,
+        });
+        await user.save();
+        createdUser = true;
+        // TODO: Send email/SMS with login credentials to the user
+        console.log("[PARENT] Created user; credentials placeholder:", {
+          email,
+          phone,
+          tempPassword,
+        });
+      } else {
+        // Check if user has parent role
+        if (user.roleid !== "parent") {
+          return res.status(400).json({
+            success: false,
+            message: "User must have parent role",
+          });
+        }
+      }
+
+      // Check if parent relationship already exists
+      const existingParent = await Parent.findOne({
+        user_id: user._id,
+        student_id,
+        relation,
+      });
+
+      if (existingParent) {
+        return res.status(400).json({
+          success: false,
+          message: `${relation} relationship already exists for this student`,
+        });
+      }
+
+      // Create parent profile
+      const newParent = new Parent({
+        branchId, // Auto-assign branch
+        user_id: user._id,
+        fname: user.fname,
+        lname: user.lname,
+        student_id,
+        aadhar,
+        relation,
+        occupation,
+        annual_income,
+        address,
+      });
+
+      await newParent.save();
+
+      res.status(201).json({
+        success: true,
+        message: createdUser
+          ? "Parent and user account created. Login info will be sent by email."
+          : "Parent profile created successfully",
+        parent: newParent,
+        credentials: createdUser
+          ? { email: user.email, phone: user.phone, tempPassword }
+          : undefined,
+      });
+    } catch (err) {
+      console.error("Error creating parent:", err);
+      res.status(400).json({
         success: false,
-        message: `${relation} relationship already exists for this student`,
+        message: err.message,
       });
     }
-
-    // Create parent profile
-    const newParent = new Parent({
-      branchId, // Auto-assign branch
-      user_id: user._id,
-      fname: user.fname,
-      lname: user.lname,
-      student_id,
-      aadhar,
-      relation,
-      occupation,
-      annual_income,
-      address,
-    });
-
-    await newParent.save();
-
-    res.status(201).json({
-      success: true,
-      message: createdUser
-        ? "Parent and user account created. Login info will be sent by email."
-        : "Parent profile created successfully",
-      parent: newParent,
-      credentials: createdUser
-        ? { email: user.email, phone: user.phone, tempPassword }
-        : undefined,
-    });
-  } catch (err) {
-    console.error("Error creating parent:", err);
-    res.status(400).json({
-      success: false,
-      message: err.message,
-    });
-  }
-});
+  },
+);
 
 // Update parent
-app.put("/api/parents/:id", async (req, res) => {
-  try {
-    const updates = req.body;
+app.put(
+  "/api/parents/:id",
+  verifyAuth,
+  verifyPermission("canEditParents"),
+  async (req, res) => {
+    try {
+      const updates = req.body;
 
-    const parent = await Parent.findByIdAndUpdate(req.params.id, updates, {
-      new: true,
-      runValidators: true,
-    });
+      const parent = await Parent.findByIdAndUpdate(req.params.id, updates, {
+        new: true,
+        runValidators: true,
+      });
 
-    if (!parent) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Parent not found" });
+      if (!parent) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Parent not found" });
+      }
+
+      res.json({ success: true, message: "Parent updated", parent });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, message: "Parent updated", parent });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Delete parent
-app.delete("/api/parents/:id", async (req, res) => {
-  try {
-    const parent = await Parent.findByIdAndDelete(req.params.id);
+app.delete(
+  "/api/parents/:id",
+  verifyAuth,
+  verifyPermission("canEditParents"),
+  async (req, res) => {
+    try {
+      const parent = await Parent.findByIdAndDelete(req.params.id);
 
-    if (!parent) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Parent not found" });
+      if (!parent) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Parent not found" });
+      }
+
+      res.json({ success: true, message: "Parent profile deleted" });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, message: "Parent profile deleted" });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // ===== LECTURES API ROUTES =====
 
 // Get all lectures with pagination and filters
-app.get("/api/lectures", async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+app.get(
+  "/api/lectures",
+  verifyAuth,
+  verifyPermission("canViewMaterials"),
+  async (req, res) => {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
 
-    const filter = {};
+      const filter = {};
 
-    // Archive filter - show archived only if explicitly requested
-    const showArchived = req.query.archived === "true";
-    if (showArchived) {
-      filter.$or = [{ archived: true }, { isArchived: true }];
-    } else {
-      filter.archived = { $ne: true };
-      filter.isArchived = { $ne: true };
-    }
+      // Archive filter - show archived only if explicitly requested
+      const showArchived = req.query.archived === "true";
+      if (showArchived) {
+        filter.$or = [{ archived: true }, { isArchived: true }];
+      } else {
+        filter.archived = { $ne: true };
+        filter.isArchived = { $ne: true };
+      }
 
-    // Add branch filter
-    const isSuperAdmin = req.user?.isSuperAdmin;
-    const branchId = req.headers["x-branch-id"];
+      // Add branch filter
+      const isSuperAdmin = req.user?.isSuperAdmin;
+      const branchId = req.headers["x-branch-id"];
 
-    if (branchId) {
-      filter.branchId = branchId;
-    } else if (!isSuperAdmin && req.user?.primaryBranch) {
-      filter.branchId = req.user.primaryBranch;
-    }
+      if (branchId) {
+        filter.branchId = branchId;
+      } else if (!isSuperAdmin && req.user?.primaryBranch) {
+        filter.branchId = req.user.primaryBranch;
+      }
 
-    // Add filters
-    if (req.query.course_id) filter.course_id = req.query.course_id;
-    if (req.query.batch_id) filter.batch_id = req.query.batch_id;
-    if (req.query.teacher_id) filter.teacher_id = req.query.teacher_id;
-    if (req.query.date) {
-      const startDate = new Date(req.query.date);
-      const endDate = new Date(req.query.date);
-      endDate.setDate(endDate.getDate() + 1);
-      filter.date = { $gte: startDate, $lt: endDate };
-    }
+      // Add filters
+      if (req.query.course_id) filter.course_id = req.query.course_id;
+      if (req.query.batch_id) filter.batch_id = req.query.batch_id;
+      if (req.query.teacher_id) filter.teacher_id = req.query.teacher_id;
+      if (req.query.date) {
+        const startDate = new Date(req.query.date);
+        const endDate = new Date(req.query.date);
+        endDate.setDate(endDate.getDate() + 1);
+        filter.date = { $gte: startDate, $lt: endDate };
+      }
 
-    const lectures = await Lecture.find(filter)
-      .populate("course_id", "name")
-      .populate("batch_id", "name")
-      .populate("teacher_id", "fname lname email")
-      .sort({ date: -1, lecture_start: -1 })
-      .limit(limit)
-      .skip(skip);
+      const lectures = await Lecture.find(filter)
+        .populate("course_id", "name")
+        .populate("batch_id", "name")
+        .populate("teacher_id", "fname lname email")
+        .sort({ date: -1, lecture_start: -1 })
+        .limit(limit)
+        .skip(skip);
 
-    const total = await Lecture.countDocuments(filter);
+      const total = await Lecture.countDocuments(filter);
 
-    // Calculate attendance for each lecture
-    const enrichedLectures = await Promise.all(
-      lectures.map(async (lecture) => {
-        let totalStudents = 0;
-        let attendedStudents = 0;
-        let attendancePercentage = null;
-        let lectureState = "pending";
+      // Calculate attendance for each lecture
+      const enrichedLectures = await Promise.all(
+        lectures.map(async (lecture) => {
+          let totalStudents = 0;
+          let attendedStudents = 0;
+          let attendancePercentage = null;
+          let lectureState = "pending";
 
-        // Only calculate if batch exists
-        if (lecture.batch_id && lecture.batch_id._id) {
-          // Get total students enrolled in this batch
-          totalStudents = await Student.countDocuments({
-            batch_id: lecture.batch_id._id,
-          });
+          // Only calculate if batch exists
+          if (lecture.batch_id && lecture.batch_id._id) {
+            // Get total students enrolled in this batch
+            totalStudents = await Student.countDocuments({
+              batch_id: lecture.batch_id._id,
+            });
 
-          // Get attendance for this specific lecture
-          // Count students who are present or late
-          // Explicitly: auto_absent, absent, and excused are NOT counted as attended
-          const lectureDate = new Date(lecture.date);
-          const startOfDay = new Date(lectureDate.setHours(0, 0, 0, 0));
-          const endOfDay = new Date(lectureDate.setHours(23, 59, 59, 999));
+            // Get attendance for this specific lecture
+            // Count students who are present or late
+            // Explicitly: auto_absent, absent, and excused are NOT counted as attended
+            const lectureDate = new Date(lecture.date);
+            const startOfDay = new Date(lectureDate.setHours(0, 0, 0, 0));
+            const endOfDay = new Date(lectureDate.setHours(23, 59, 59, 999));
 
-          attendedStudents = await Attendance.countDocuments({
-            lectureId: lecture._id,
-            date: { $gte: startOfDay, $lte: endOfDay },
-            userType: "Student",
-            status: { $in: ["present", "late"] },
-          });
+            attendedStudents = await Attendance.countDocuments({
+              lectureId: lecture._id,
+              date: { $gte: startOfDay, $lte: endOfDay },
+              userType: "Student",
+              status: { $in: ["present", "late"] },
+            });
 
-          // Determine lecture state and calculate percentage
-          const now = new Date();
-          const lectureStart = new Date(lecture.lecture_start);
-          const lectureEnd = new Date(lecture.lecture_end);
+            // Determine lecture state and calculate percentage
+            const now = new Date();
+            const lectureStart = new Date(lecture.lecture_start);
+            const lectureEnd = new Date(lecture.lecture_end);
 
-          if (now < lectureStart) {
-            // Before lecture starts
-            lectureState = "pending";
-            attendancePercentage = null;
-          } else if (now >= lectureStart && now <= lectureEnd) {
-            // During lecture (live)
-            lectureState = "live";
-            if (totalStudents > 0) {
-              attendancePercentage = Math.round(
-                (attendedStudents / totalStudents) * 100,
-              );
-            } else {
-              // Edge case: 0/0 - batch has zero students
+            if (now < lectureStart) {
+              // Before lecture starts
+              lectureState = "pending";
               attendancePercentage = null;
-            }
-          } else {
-            // After lecture ends (final)
-            lectureState = "final";
-            if (totalStudents > 0) {
-              attendancePercentage = Math.round(
-                (attendedStudents / totalStudents) * 100,
-              );
+            } else if (now >= lectureStart && now <= lectureEnd) {
+              // During lecture (live)
+              lectureState = "live";
+              if (totalStudents > 0) {
+                attendancePercentage = Math.round(
+                  (attendedStudents / totalStudents) * 100,
+                );
+              } else {
+                // Edge case: 0/0 - batch has zero students
+                attendancePercentage = null;
+              }
             } else {
-              // Edge case: 0/0 - batch has zero students
-              attendancePercentage = null;
+              // After lecture ends (final)
+              lectureState = "final";
+              if (totalStudents > 0) {
+                attendancePercentage = Math.round(
+                  (attendedStudents / totalStudents) * 100,
+                );
+              } else {
+                // Edge case: 0/0 - batch has zero students
+                attendancePercentage = null;
+              }
             }
           }
-        }
 
-        return {
-          ...lecture.toObject(),
-          total_students: totalStudents,
-          attended_students: attendedStudents,
-          attendance: {
-            attended_students: attendedStudents,
+          return {
+            ...lecture.toObject(),
             total_students: totalStudents,
-            percentage: attendancePercentage,
-            state: lectureState,
-          },
-          metadata: {
-            attendance_percentage: attendancePercentage,
-            duration_minutes:
-              lecture.lecture_end && lecture.lecture_start
-                ? Math.round(
-                    (new Date(lecture.lecture_end) -
-                      new Date(lecture.lecture_start)) /
-                      (1000 * 60),
-                  )
-                : 0,
-          },
-        };
-      }),
-    );
+            attended_students: attendedStudents,
+            attendance: {
+              attended_students: attendedStudents,
+              total_students: totalStudents,
+              percentage: attendancePercentage,
+              state: lectureState,
+            },
+            metadata: {
+              attendance_percentage: attendancePercentage,
+              duration_minutes:
+                lecture.lecture_end && lecture.lecture_start
+                  ? Math.round(
+                      (new Date(lecture.lecture_end) -
+                        new Date(lecture.lecture_start)) /
+                        (1000 * 60),
+                    )
+                  : 0,
+            },
+          };
+        }),
+      );
 
-    res.json({
-      success: true,
-      lectures: enrichedLectures,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      res.json({
+        success: true,
+        lectures: enrichedLectures,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Bulk upload lectures
 app.post(
@@ -3655,57 +3880,176 @@ app.post(
 );
 
 // Get archived lectures (MUST be before /:id route)
-app.get("/api/lectures/archived", async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+app.get(
+  "/api/lectures/archived",
+  verifyAuth,
+  verifyPermission("canViewMaterials"),
+  async (req, res) => {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
 
-    const filter = {
-      $or: [{ archived: true }, { isArchived: true }],
-    };
+      const filter = {
+        $or: [{ archived: true }, { isArchived: true }],
+      };
 
-    const lectures = await Lecture.find(filter)
-      .populate("course_id", "name")
-      .populate("batch_id", "name")
-      .populate("teacher_id", "fname lname email")
-      .sort({ date: -1, lecture_start: -1 })
-      .limit(limit)
-      .skip(skip);
+      const lectures = await Lecture.find(filter)
+        .populate("course_id", "name")
+        .populate("batch_id", "name")
+        .populate("teacher_id", "fname lname email")
+        .sort({ date: -1, lecture_start: -1 })
+        .limit(limit)
+        .skip(skip);
 
-    const total = await Lecture.countDocuments(filter);
+      const total = await Lecture.countDocuments(filter);
 
-    // Calculate attendance for each archived lecture
-    // Archived lectures MUST always show final state - never recalculated as live
-    const enrichedLectures = await Promise.all(
-      lectures.map(async (lecture) => {
-        let totalStudents = 0;
-        let attendedStudents = 0;
-        let attendancePercentage = null;
-        const lectureState = "final"; // Archived lectures are always final
+      // Calculate attendance for each archived lecture
+      // Archived lectures MUST always show final state - never recalculated as live
+      const enrichedLectures = await Promise.all(
+        lectures.map(async (lecture) => {
+          let totalStudents = 0;
+          let attendedStudents = 0;
+          let attendancePercentage = null;
+          const lectureState = "final"; // Archived lectures are always final
 
-        // Only calculate if batch exists
-        if (lecture.batch_id && lecture.batch_id._id) {
-          // Get total students enrolled in this batch
-          totalStudents = await Student.countDocuments({
-            batch_id: lecture.batch_id._id,
-          });
+          // Only calculate if batch exists
+          if (lecture.batch_id && lecture.batch_id._id) {
+            // Get total students enrolled in this batch
+            totalStudents = await Student.countDocuments({
+              batch_id: lecture.batch_id._id,
+            });
 
-          // Get attendance for this specific lecture
-          // Count students who are present or late
-          // Explicitly: auto_absent, absent, and excused are NOT counted as attended
-          const lectureDate = new Date(lecture.date);
-          const startOfDay = new Date(lectureDate.setHours(0, 0, 0, 0));
-          const endOfDay = new Date(lectureDate.setHours(23, 59, 59, 999));
+            // Get attendance for this specific lecture
+            // Count students who are present or late
+            // Explicitly: auto_absent, absent, and excused are NOT counted as attended
+            const lectureDate = new Date(lecture.date);
+            const startOfDay = new Date(lectureDate.setHours(0, 0, 0, 0));
+            const endOfDay = new Date(lectureDate.setHours(23, 59, 59, 999));
 
-          attendedStudents = await Attendance.countDocuments({
-            lectureId: lecture._id,
-            date: { $gte: startOfDay, $lte: endOfDay },
-            userType: "Student",
-            status: { $in: ["present", "late"] },
-          });
+            attendedStudents = await Attendance.countDocuments({
+              lectureId: lecture._id,
+              date: { $gte: startOfDay, $lte: endOfDay },
+              userType: "Student",
+              status: { $in: ["present", "late"] },
+            });
 
-          // Calculate final percentage
+            // Calculate final percentage
+            if (totalStudents > 0) {
+              attendancePercentage = Math.round(
+                (attendedStudents / totalStudents) * 100,
+              );
+            } else {
+              // Edge case: 0/0 - batch has zero students
+              attendancePercentage = null;
+            }
+          }
+
+          return {
+            ...lecture.toObject(),
+            total_students: totalStudents,
+            attended_students: attendedStudents,
+            attendance: {
+              attended_students: attendedStudents,
+              total_students: totalStudents,
+              percentage: attendancePercentage,
+              state: lectureState,
+            },
+            metadata: {
+              attendance_percentage: attendancePercentage,
+              duration_minutes:
+                lecture.lecture_end && lecture.lecture_start
+                  ? Math.round(
+                      (new Date(lecture.lecture_end) -
+                        new Date(lecture.lecture_start)) /
+                        (1000 * 60),
+                    )
+                  : 0,
+            },
+          };
+        }),
+      );
+
+      res.json({
+        success: true,
+        lectures: enrichedLectures,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
+
+// Get lecture by ID
+app.get(
+  "/api/lectures/:id",
+  verifyAuth,
+  verifyPermission("canViewMaterials"),
+  async (req, res) => {
+    try {
+      const lecture = await Lecture.findById(req.params.id)
+        .populate("course_id", "name")
+        .populate("batch_id", "name")
+        .populate("teacher_id", "f_name l_name email");
+
+      if (!lecture) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Lecture not found" });
+      }
+
+      let totalStudents = 0;
+      let attendedStudents = 0;
+      let attendancePercentage = null;
+      let lectureState = "pending";
+
+      // Calculate attendance if batch exists
+      if (lecture.batch_id && lecture.batch_id._id) {
+        // Get total students enrolled in this batch
+        totalStudents = await Student.countDocuments({
+          batch_id: lecture.batch_id._id,
+        });
+
+        // Get attendance for this specific lecture
+        // Count students who are present or late
+        // Explicitly: auto_absent, absent, and excused are NOT counted as attended
+        const lectureDate = new Date(lecture.date);
+        const startOfDay = new Date(lectureDate.setHours(0, 0, 0, 0));
+        const endOfDay = new Date(lectureDate.setHours(23, 59, 59, 999));
+
+        attendedStudents = await Attendance.countDocuments({
+          lectureId: lecture._id,
+          date: { $gte: startOfDay, $lte: endOfDay },
+          userType: "Student",
+          status: { $in: ["present", "late"] },
+        });
+
+        // Determine lecture state and calculate percentage
+        const now = new Date();
+        const lectureStart = new Date(lecture.lecture_start);
+        const lectureEnd = new Date(lecture.lecture_end);
+
+        if (now < lectureStart) {
+          // Before lecture starts
+          lectureState = "pending";
+          attendancePercentage = null;
+        } else if (now >= lectureStart && now <= lectureEnd) {
+          // During lecture (live)
+          lectureState = "live";
+          if (totalStudents > 0) {
+            attendancePercentage = Math.round(
+              (attendedStudents / totalStudents) * 100,
+            );
+          } else {
+            // Edge case: 0/0 - batch has zero students
+            attendancePercentage = null;
+          }
+        } else {
+          // After lecture ends (final)
+          lectureState = "final";
           if (totalStudents > 0) {
             attendancePercentage = Math.round(
               (attendedStudents / totalStudents) * 100,
@@ -3715,1234 +4059,1241 @@ app.get("/api/lectures/archived", async (req, res) => {
             attendancePercentage = null;
           }
         }
-
-        return {
-          ...lecture.toObject(),
-          total_students: totalStudents,
-          attended_students: attendedStudents,
-          attendance: {
-            attended_students: attendedStudents,
-            total_students: totalStudents,
-            percentage: attendancePercentage,
-            state: lectureState,
-          },
-          metadata: {
-            attendance_percentage: attendancePercentage,
-            duration_minutes:
-              lecture.lecture_end && lecture.lecture_start
-                ? Math.round(
-                    (new Date(lecture.lecture_end) -
-                      new Date(lecture.lecture_start)) /
-                      (1000 * 60),
-                  )
-                : 0,
-          },
-        };
-      }),
-    );
-
-    res.json({
-      success: true,
-      lectures: enrichedLectures,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Get lecture by ID
-app.get("/api/lectures/:id", async (req, res) => {
-  try {
-    const lecture = await Lecture.findById(req.params.id)
-      .populate("course_id", "name")
-      .populate("batch_id", "name")
-      .populate("teacher_id", "f_name l_name email");
-
-    if (!lecture) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Lecture not found" });
-    }
-
-    let totalStudents = 0;
-    let attendedStudents = 0;
-    let attendancePercentage = null;
-    let lectureState = "pending";
-
-    // Calculate attendance if batch exists
-    if (lecture.batch_id && lecture.batch_id._id) {
-      // Get total students enrolled in this batch
-      totalStudents = await Student.countDocuments({
-        batch_id: lecture.batch_id._id,
-      });
-
-      // Get attendance for this specific lecture
-      // Count students who are present or late
-      // Explicitly: auto_absent, absent, and excused are NOT counted as attended
-      const lectureDate = new Date(lecture.date);
-      const startOfDay = new Date(lectureDate.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(lectureDate.setHours(23, 59, 59, 999));
-
-      attendedStudents = await Attendance.countDocuments({
-        lectureId: lecture._id,
-        date: { $gte: startOfDay, $lte: endOfDay },
-        userType: "Student",
-        status: { $in: ["present", "late"] },
-      });
-
-      // Determine lecture state and calculate percentage
-      const now = new Date();
-      const lectureStart = new Date(lecture.lecture_start);
-      const lectureEnd = new Date(lecture.lecture_end);
-
-      if (now < lectureStart) {
-        // Before lecture starts
-        lectureState = "pending";
-        attendancePercentage = null;
-      } else if (now >= lectureStart && now <= lectureEnd) {
-        // During lecture (live)
-        lectureState = "live";
-        if (totalStudents > 0) {
-          attendancePercentage = Math.round(
-            (attendedStudents / totalStudents) * 100,
-          );
-        } else {
-          // Edge case: 0/0 - batch has zero students
-          attendancePercentage = null;
-        }
-      } else {
-        // After lecture ends (final)
-        lectureState = "final";
-        if (totalStudents > 0) {
-          attendancePercentage = Math.round(
-            (attendedStudents / totalStudents) * 100,
-          );
-        } else {
-          // Edge case: 0/0 - batch has zero students
-          attendancePercentage = null;
-        }
       }
-    }
 
-    const enrichedLecture = {
-      ...lecture.toObject(),
-      total_students: totalStudents,
-      attended_students: attendedStudents,
-      attendance: {
-        attended_students: attendedStudents,
+      const enrichedLecture = {
+        ...lecture.toObject(),
         total_students: totalStudents,
-        percentage: attendancePercentage,
-        state: lectureState,
-      },
-      metadata: {
-        attendance_percentage: attendancePercentage,
-        duration_minutes:
-          lecture.lecture_end && lecture.lecture_start
-            ? Math.round(
-                (new Date(lecture.lecture_end) -
-                  new Date(lecture.lecture_start)) /
-                  (1000 * 60),
-              )
-            : 0,
-      },
-    };
+        attended_students: attendedStudents,
+        attendance: {
+          attended_students: attendedStudents,
+          total_students: totalStudents,
+          percentage: attendancePercentage,
+          state: lectureState,
+        },
+        metadata: {
+          attendance_percentage: attendancePercentage,
+          duration_minutes:
+            lecture.lecture_end && lecture.lecture_start
+              ? Math.round(
+                  (new Date(lecture.lecture_end) -
+                    new Date(lecture.lecture_start)) /
+                    (1000 * 60),
+                )
+              : 0,
+        },
+      };
 
-    res.json({ success: true, lecture: enrichedLecture });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      res.json({ success: true, lecture: enrichedLecture });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Create new lecture
-app.post("/api/lectures", async (req, res) => {
-  try {
-    // Get branchId from header or user's primaryBranch
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+app.post(
+  "/api/lectures",
+  verifyAuth,
+  verifyPermission("canEditMaterials"),
+  async (req, res) => {
+    try {
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
 
-    const lectureData = req.body;
+      const lectureData = req.body;
 
-    // Validate that course exists
-    if (lectureData.course_id) {
-      const courseExists = await Course.findById(lectureData.course_id);
-      if (!courseExists) {
-        return res.status(400).json({
-          success: false,
-          message: "Course does not exist. Please create the course first.",
-        });
+      // Validate that course exists
+      if (lectureData.course_id) {
+        const courseExists = await Course.findById(lectureData.course_id);
+        if (!courseExists) {
+          return res.status(400).json({
+            success: false,
+            message: "Course does not exist. Please create the course first.",
+          });
+        }
       }
+
+      // Validate that batch exists and is linked to the course
+      if (lectureData.batch_id) {
+        const batchExists = await Batches.findById(lectureData.batch_id);
+        if (!batchExists) {
+          return res.status(400).json({
+            success: false,
+            message: "Batch does not exist. Please create the batch first.",
+          });
+        }
+
+        // Verify batch is linked to the course
+        if (
+          lectureData.course_id &&
+          batchExists.course_id.toString() !== lectureData.course_id.toString()
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: "Batch is not linked to the specified course.",
+          });
+        }
+      }
+
+      // Calculate total students in the batch
+      const studentsInBatch = await Student.countDocuments({
+        batch_id: lectureData.batch_id,
+      });
+      lectureData.total_students = studentsInBatch;
+      lectureData.branchId = branchId; // Auto-assign branch
+
+      const lecture = new Lecture(lectureData);
+      await lecture.save();
+
+      const populatedLecture = await Lecture.findById(lecture._id)
+        .populate("course_id", "name")
+        .populate("batch_id", "name")
+        .populate("teacher_id", "f_name l_name email");
+
+      res.status(201).json({ success: true, lecture: populatedLecture });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    // Validate that batch exists and is linked to the course
-    if (lectureData.batch_id) {
-      const batchExists = await Batches.findById(lectureData.batch_id);
-      if (!batchExists) {
-        return res.status(400).json({
-          success: false,
-          message: "Batch does not exist. Please create the batch first.",
-        });
-      }
-
-      // Verify batch is linked to the course
-      if (
-        lectureData.course_id &&
-        batchExists.course_id.toString() !== lectureData.course_id.toString()
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Batch is not linked to the specified course.",
-        });
-      }
-    }
-
-    // Calculate total students in the batch
-    const studentsInBatch = await Student.countDocuments({
-      batch_id: lectureData.batch_id,
-    });
-    lectureData.total_students = studentsInBatch;
-    lectureData.branchId = branchId; // Auto-assign branch
-
-    const lecture = new Lecture(lectureData);
-    await lecture.save();
-
-    const populatedLecture = await Lecture.findById(lecture._id)
-      .populate("course_id", "name")
-      .populate("batch_id", "name")
-      .populate("teacher_id", "f_name l_name email");
-
-    res.status(201).json({ success: true, lecture: populatedLecture });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Update lecture
-app.put("/api/lectures/:id", async (req, res) => {
-  try {
-    const update = { ...req.body };
-    // Recompute total_students if batch_id provided
-    if (update.batch_id) {
-      try {
-        const studentsInBatch = await Student.countDocuments({
-          batch_id: update.batch_id,
-        });
-        update.total_students = studentsInBatch;
-      } catch (e) {
-        // ignore counting failure and continue
+app.put(
+  "/api/lectures/:id",
+  verifyAuth,
+  verifyPermission("canEditMaterials"),
+  async (req, res) => {
+    try {
+      const update = { ...req.body };
+      // Recompute total_students if batch_id provided
+      if (update.batch_id) {
+        try {
+          const studentsInBatch = await Student.countDocuments({
+            batch_id: update.batch_id,
+          });
+          update.total_students = studentsInBatch;
+        } catch (e) {
+          // ignore counting failure and continue
+        }
       }
+      update.updated_at = new Date();
+
+      const lecture = await Lecture.findByIdAndUpdate(req.params.id, update, {
+        new: true,
+        runValidators: true,
+      })
+        .populate("course_id", "name")
+        .populate("batch_id", "name")
+        .populate("teacher_id", "f_name l_name email");
+
+      if (!lecture) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Lecture not found" });
+      }
+
+      res.json({ success: true, lecture });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-    update.updated_at = new Date();
-
-    const lecture = await Lecture.findByIdAndUpdate(req.params.id, update, {
-      new: true,
-      runValidators: true,
-    })
-      .populate("course_id", "name")
-      .populate("batch_id", "name")
-      .populate("teacher_id", "f_name l_name email");
-
-    if (!lecture) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Lecture not found" });
-    }
-
-    res.json({ success: true, lecture });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Delete lecture
-app.delete("/api/lectures/:id", async (req, res) => {
-  try {
-    const lecture = await Lecture.findByIdAndDelete(req.params.id);
+app.delete(
+  "/api/lectures/:id",
+  verifyAuth,
+  verifyPermission("canEditMaterials"),
+  async (req, res) => {
+    try {
+      const lecture = await Lecture.findByIdAndDelete(req.params.id);
 
-    if (!lecture) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Lecture not found" });
+      if (!lecture) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Lecture not found" });
+      }
+
+      res.json({ success: true, message: "Lecture deleted successfully" });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, message: "Lecture deleted successfully" });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Update attendance for a lecture
-app.patch("/api/lectures/:id/attendance", async (req, res) => {
-  try {
-    const { attendance_count } = req.body;
+app.patch(
+  "/api/lectures/:id/attendance",
+  verifyAuth,
+  verifyPermission("canEditMaterials"),
+  async (req, res) => {
+    try {
+      const { attendance_count } = req.body;
 
-    const lecture = await Lecture.findByIdAndUpdate(
-      req.params.id,
-      { attendance_count },
-      { new: true },
-    )
-      .populate("course_id", "name")
-      .populate("batch_id", "name")
-      .populate("teacher_id", "f_name l_name email");
+      const lecture = await Lecture.findByIdAndUpdate(
+        req.params.id,
+        { attendance_count },
+        { new: true },
+      )
+        .populate("course_id", "name")
+        .populate("batch_id", "name")
+        .populate("teacher_id", "f_name l_name email");
 
-    if (!lecture) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Lecture not found" });
+      if (!lecture) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Lecture not found" });
+      }
+
+      res.json({ success: true, lecture });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, lecture });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Archive lecture
-app.patch("/api/lectures/:id/archive", async (req, res) => {
-  try {
-    const lecture = await Lecture.findByIdAndUpdate(
-      req.params.id,
-      { isArchived: true, archived: true },
-      { new: true },
-    )
-      .populate("course_id", "name")
-      .populate("batch_id", "name")
-      .populate("teacher_id", "f_name l_name email");
+app.patch(
+  "/api/lectures/:id/archive",
+  verifyAuth,
+  verifyPermission("canEditMaterials"),
+  async (req, res) => {
+    try {
+      const lecture = await Lecture.findByIdAndUpdate(
+        req.params.id,
+        { isArchived: true, archived: true },
+        { new: true },
+      )
+        .populate("course_id", "name")
+        .populate("batch_id", "name")
+        .populate("teacher_id", "f_name l_name email");
 
-    if (!lecture) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Lecture not found" });
+      if (!lecture) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Lecture not found" });
+      }
+
+      res.json({ success: true, lecture });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, lecture });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Restore lecture
-app.patch("/api/lectures/:id/restore", async (req, res) => {
-  try {
-    const lecture = await Lecture.findByIdAndUpdate(
-      req.params.id,
-      { isArchived: false, archived: false },
-      { new: true },
-    )
-      .populate("course_id", "name")
-      .populate("batch_id", "name")
-      .populate("teacher_id", "f_name l_name email");
+app.patch(
+  "/api/lectures/:id/restore",
+  verifyAuth,
+  verifyPermission("canEditMaterials"),
+  async (req, res) => {
+    try {
+      const lecture = await Lecture.findByIdAndUpdate(
+        req.params.id,
+        { isArchived: false, archived: false },
+        { new: true },
+      )
+        .populate("course_id", "name")
+        .populate("batch_id", "name")
+        .populate("teacher_id", "f_name l_name email");
 
-    if (!lecture) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Lecture not found" });
+      if (!lecture) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Lecture not found" });
+      }
+
+      res.json({ success: true, lecture });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, lecture });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // ===== PAYMENT ROUTES =====
 
 // Get all payments with filters
-app.get("/api/payments", async (req, res) => {
-  try {
-    const { course, batch, student, status } = req.query;
+app.get(
+  "/api/payments",
+  verifyAuth,
+  verifyPermission("canViewAccounts"),
+  async (req, res) => {
+    try {
+      const { course, batch, student, status } = req.query;
 
-    let filter = {};
-    if (course && course !== "all") filter.course_id = course;
-    if (batch && batch !== "all") filter.batch_id = batch;
-    if (student && student !== "all") filter.student_id = student;
-    if (status && status !== "all") filter.status = status;
+      let filter = {};
+      if (course && course !== "all") filter.course_id = course;
+      if (batch && batch !== "all") filter.batch_id = batch;
+      if (student && student !== "all") filter.student_id = student;
+      if (status && status !== "all") filter.status = status;
 
-    const payments = await Payment.find(filter)
-      .populate({
-        path: "student_id",
-        populate: { path: "user_id", select: "f_name l_name email phone" },
-      })
-      .populate("course_id", "name")
-      .populate("batch_id", "name")
-      .sort({ due_date: -1 });
+      const payments = await Payment.find(filter)
+        .populate({
+          path: "student_id",
+          populate: { path: "user_id", select: "f_name l_name email phone" },
+        })
+        .populate("course_id", "name")
+        .populate("batch_id", "name")
+        .sort({ due_date: -1 });
 
-    res.json({ success: true, payments });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      res.json({ success: true, payments });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Get payment statistics for dashboard
-app.get("/api/payments/stats", async (req, res) => {
-  try {
-    const totalPayments = await Payment.countDocuments();
-    const paidPayments = await Payment.countDocuments({ status: "paid" });
-    const pendingPayments = await Payment.countDocuments({ status: "pending" });
-    const overduePayments = await Payment.countDocuments({ status: "overdue" });
+app.get(
+  "/api/payments/stats",
+  verifyAuth,
+  verifyPermission("canViewAccounts"),
+  async (req, res) => {
+    try {
+      const totalPayments = await Payment.countDocuments();
+      const paidPayments = await Payment.countDocuments({ status: "paid" });
+      const pendingPayments = await Payment.countDocuments({
+        status: "pending",
+      });
+      const overduePayments = await Payment.countDocuments({
+        status: "overdue",
+      });
 
-    const totalAmount = await Payment.aggregate([
-      { $group: { _id: null, total: { $sum: "$amount" } } },
-    ]);
+      const totalAmount = await Payment.aggregate([
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]);
 
-    const collectedAmount = await Payment.aggregate([
-      { $group: { _id: null, total: { $sum: "$paid_amount" } } },
-    ]);
+      const collectedAmount = await Payment.aggregate([
+        { $group: { _id: null, total: { $sum: "$paid_amount" } } },
+      ]);
 
-    // Get upcoming installments (due in next 10 days)
-    const now = new Date();
-    const tenDaysFromNow = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+      // Get upcoming installments (due in next 10 days)
+      const now = new Date();
+      const tenDaysFromNow = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
 
-    const upcomingInstallments = await FeeInstallment.find({
-      due_date: {
-        $gte: now,
-        $lte: tenDaysFromNow,
-      },
-    })
-      .populate({
-        path: "plan_id",
-        populate: {
-          path: "batch_id",
-          select: "name course_id",
-          populate: {
-            path: "course_id",
-            select: "name",
-          },
+      const upcomingInstallments = await FeeInstallment.find({
+        due_date: {
+          $gte: now,
+          $lte: tenDaysFromNow,
         },
       })
-      .sort({ due_date: 1 })
-      .limit(20);
+        .populate({
+          path: "plan_id",
+          populate: {
+            path: "batch_id",
+            select: "name course_id",
+            populate: {
+              path: "course_id",
+              select: "name",
+            },
+          },
+        })
+        .sort({ due_date: 1 })
+        .limit(20);
 
-    // For each installment, find students and calculate remaining amount
-    const installmentsWithDetails = await Promise.all(
-      upcomingInstallments.map(async (installment) => {
-        if (!installment.plan_id) return null;
+      // For each installment, find students and calculate remaining amount
+      const installmentsWithDetails = await Promise.all(
+        upcomingInstallments.map(async (installment) => {
+          if (!installment.plan_id) return null;
 
-        // Find students with this fee plan
-        const students = await Student.find({
-          fee_plan_id: installment.plan_id._id,
-        }).select("f_name l_name course_id");
+          // Find students with this fee plan
+          const students = await Student.find({
+            fee_plan_id: installment.plan_id._id,
+          }).select("f_name l_name course_id");
 
-        // For each student, calculate how much of this installment is paid
-        const studentDetails = await Promise.all(
-          students.map(async (student) => {
-            // Get payments for this student and this installment
-            const payments = await FeePayment.find({
-              student_id: student._id,
-              installment_id: installment._id,
-            });
-
-            const paidAmount = payments.reduce(
-              (sum, p) => sum + (p.paid_amount || 0),
-              0,
-            );
-            const remainingAmount = installment.amount - paidAmount;
-
-            // Only include if there's a remaining balance
-            if (remainingAmount > 0.01) {
-              const courseName =
-                installment.plan_id.batch_id?.course_id?.name || "";
-
-              return {
+          // For each student, calculate how much of this installment is paid
+          const studentDetails = await Promise.all(
+            students.map(async (student) => {
+              // Get payments for this student and this installment
+              const payments = await FeePayment.find({
                 student_id: student._id,
-                student_name:
-                  `${student.f_name} ${student.l_name || ""}`.trim(),
-                course_name: courseName,
-                installment_no: installment.installment_no,
-                due_date: installment.due_date,
-                installment_amount: installment.amount,
-                paid_amount: paidAmount,
-                remaining_amount: Math.round(remainingAmount * 100) / 100,
-                batch_name: installment.plan_id.batch_id?.name || "",
-              };
-            }
-            return null;
-          }),
-        );
+                installment_id: installment._id,
+              });
 
-        return studentDetails.filter((detail) => detail !== null);
-      }),
-    );
+              const paidAmount = payments.reduce(
+                (sum, p) => sum + (p.paid_amount || 0),
+                0,
+              );
+              const remainingAmount = installment.amount - paidAmount;
 
-    // Flatten array and remove nulls
-    const upcomingFees = installmentsWithDetails
-      .flat()
-      .filter((item) => item !== null)
-      .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+              // Only include if there's a remaining balance
+              if (remainingAmount > 0.01) {
+                const courseName =
+                  installment.plan_id.batch_id?.course_id?.name || "";
 
-    res.json({
-      success: true,
-      stats: {
-        total: totalPayments,
-        paid: paidPayments,
-        pending: pendingPayments,
-        overdue: overduePayments,
-        totalAmount: totalAmount[0]?.total || 0,
-        collectedAmount: collectedAmount[0]?.total || 0,
-      },
-      upcomingFees: upcomingFees,
-    });
-  } catch (err) {
-    console.error("Error in /api/payments/stats:", err);
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+                return {
+                  student_id: student._id,
+                  student_name:
+                    `${student.f_name} ${student.l_name || ""}`.trim(),
+                  course_name: courseName,
+                  installment_no: installment.installment_no,
+                  due_date: installment.due_date,
+                  installment_amount: installment.amount,
+                  paid_amount: paidAmount,
+                  remaining_amount: Math.round(remainingAmount * 100) / 100,
+                  batch_name: installment.plan_id.batch_id?.name || "",
+                };
+              }
+              return null;
+            }),
+          );
+
+          return studentDetails.filter((detail) => detail !== null);
+        }),
+      );
+
+      // Flatten array and remove nulls
+      const upcomingFees = installmentsWithDetails
+        .flat()
+        .filter((item) => item !== null)
+        .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+
+      res.json({
+        success: true,
+        stats: {
+          total: totalPayments,
+          paid: paidPayments,
+          pending: pendingPayments,
+          overdue: overduePayments,
+          totalAmount: totalAmount[0]?.total || 0,
+          collectedAmount: collectedAmount[0]?.total || 0,
+        },
+        upcomingFees: upcomingFees,
+      });
+    } catch (err) {
+      console.error("Error in /api/payments/stats:", err);
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Create payment
-app.post("/api/payments", async (req, res) => {
-  try {
-    const payment = new Payment(req.body);
-    await payment.save();
-    res.json({ success: true, payment });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.post(
+  "/api/payments",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      const payment = new Payment(req.body);
+      await payment.save();
+      res.json({ success: true, payment });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Update payment
-app.put("/api/payments/:id", async (req, res) => {
-  try {
-    const payment = await Payment.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-    res.json({ success: true, payment });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.put(
+  "/api/payments/:id",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      const payment = await Payment.findByIdAndUpdate(req.params.id, req.body, {
+        new: true,
+        runValidators: true,
+      });
+      res.json({ success: true, payment });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Delete payment
-app.delete("/api/payments/:id", async (req, res) => {
-  try {
-    await Payment.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: "Payment deleted" });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.delete(
+  "/api/payments/:id",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      await Payment.findByIdAndDelete(req.params.id);
+      res.json({ success: true, message: "Payment deleted" });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== EXPENSE ROUTES =====
 
 // Get all expenses
-app.get("/api/expenses", async (req, res) => {
-  try {
-    const { category, status } = req.query;
+app.get(
+  "/api/expenses",
+  verifyAuth,
+  verifyPermission("canViewAccounts"),
+  async (req, res) => {
+    try {
+      const { category, status } = req.query;
 
-    let filter = {};
-    if (category && category !== "all") filter.category = category;
-    if (status && status !== "all") filter.status = status;
+      let filter = {};
+      if (category && category !== "all") filter.category = category;
+      if (status && status !== "all") filter.status = status;
 
-    const expenses = await Expense.find(filter)
-      .populate("approved_by", "fname lname")
-      .sort({ date: -1 });
+      const expenses = await Expense.find(filter)
+        .populate("approved_by", "fname lname")
+        .sort({ date: -1 });
 
-    res.json({ success: true, expenses });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      res.json({ success: true, expenses });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Get expense statistics
-app.get("/api/expenses/stats", async (req, res) => {
-  try {
-    const totalExpenses = await Expense.countDocuments();
-    const pendingExpenses = await Expense.countDocuments({ status: "pending" });
-    const approvedExpenses = await Expense.countDocuments({
-      status: "approved",
-    });
+app.get(
+  "/api/expenses/stats",
+  verifyAuth,
+  verifyPermission("canViewAccounts"),
+  async (req, res) => {
+    try {
+      const totalExpenses = await Expense.countDocuments();
+      const pendingExpenses = await Expense.countDocuments({
+        status: "pending",
+      });
+      const approvedExpenses = await Expense.countDocuments({
+        status: "approved",
+      });
 
-    const totalAmount = await Expense.aggregate([
-      { $group: { _id: null, total: { $sum: "$amount" } } },
-    ]);
+      const totalAmount = await Expense.aggregate([
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]);
 
-    const categoryWise = await Expense.aggregate([
-      {
-        $group: {
-          _id: "$category",
-          total: { $sum: "$amount" },
-          count: { $sum: 1 },
+      const categoryWise = await Expense.aggregate([
+        {
+          $group: {
+            _id: "$category",
+            total: { $sum: "$amount" },
+            count: { $sum: 1 },
+          },
         },
-      },
-    ]);
+      ]);
 
-    res.json({
-      success: true,
-      stats: {
-        total: totalExpenses,
-        pending: pendingExpenses,
-        approved: approvedExpenses,
-        totalAmount: totalAmount[0]?.total || 0,
-        byCategory: categoryWise,
-      },
-    });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      res.json({
+        success: true,
+        stats: {
+          total: totalExpenses,
+          pending: pendingExpenses,
+          approved: approvedExpenses,
+          totalAmount: totalAmount[0]?.total || 0,
+          byCategory: categoryWise,
+        },
+      });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Create expense
-app.post("/api/expenses", async (req, res) => {
-  try {
-    const expense = new Expense(req.body);
-    await expense.save();
-    res.json({ success: true, expense });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.post(
+  "/api/expenses",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      const expense = new Expense(req.body);
+      await expense.save();
+      res.json({ success: true, expense });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Update expense
-app.put("/api/expenses/:id", async (req, res) => {
-  try {
-    const expense = await Expense.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-    res.json({ success: true, expense });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.put(
+  "/api/expenses/:id",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      const expense = await Expense.findByIdAndUpdate(req.params.id, req.body, {
+        new: true,
+        runValidators: true,
+      });
+      res.json({ success: true, expense });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Delete expense
-app.delete("/api/expenses/:id", async (req, res) => {
-  try {
-    await Expense.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: "Expense deleted" });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+app.delete(
+  "/api/expenses/:id",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      await Expense.findByIdAndDelete(req.params.id);
+      res.json({ success: true, message: "Expense deleted" });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== SALARY ROUTES =====
 
 // Get all salaries
-app.get("/api/salaries", async (req, res) => {
-  try {
-    const { month, year, status } = req.query;
+app.get(
+  "/api/salaries",
+  verifyAuth,
+  verifyPermission("canViewAccounts"),
+  async (req, res) => {
+    try {
+      const { month, year, status } = req.query;
 
-    let filter = {};
-    if (month) filter.month = parseInt(month);
-    if (year) filter.year = parseInt(year);
-    if (status && status !== "all") filter.status = status;
+      let filter = {};
+      if (month) filter.month = parseInt(month);
+      if (year) filter.year = parseInt(year);
+      if (status && status !== "all") filter.status = status;
 
-    const salaries = await Salary.find(filter)
-      .populate({
-        path: "teacher_id",
-        populate: { path: "user_id", select: "f_name l_name email phone" },
-      })
-      .sort({ year: -1, month: -1 });
+      const salaries = await Salary.find(filter)
+        .populate({
+          path: "teacher_id",
+          populate: { path: "user_id", select: "f_name l_name email phone" },
+        })
+        .sort({ year: -1, month: -1 });
 
-    res.json({ success: true, salaries });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      res.json({ success: true, salaries });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== STUDENT PAYMENT RECORDS ENDPOINT =====
-app.get("/api/student-payments", verifyAuth, async (req, res) => {
-  console.log("📊 Fetching student payment records...");
+app.get(
+  "/api/student-payments",
+  verifyAuth,
+  verifyPermission("canViewAccounts"),
+  async (req, res) => {
+    console.log("📊 Fetching student payment records...");
 
-  try {
-    const { course, batch, student, status } = req.query;
-    const userRole = req.user?.role;
-    const userId = req.user?.id;
+    try {
+      const { course, batch, student, status } = req.query;
+      const userRole = req.user?.role;
+      const userId = req.user?.id;
 
-    // Build filter
-    let studentFilter = {};
+      // Build filter
+      let studentFilter = {};
 
-    // If user is a student, only show their own payments
-    if (userRole === "Student") {
-      const studentRecord = await Student.findOne({ user_id: userId });
-      if (!studentRecord) {
-        return res.json({ success: true, paymentRecords: [], total: 0 });
+      // If user is a student, only show their own payments
+      if (userRole === "Student") {
+        const studentRecord = await Student.findOne({ user_id: userId });
+        if (!studentRecord) {
+          return res.json({ success: true, paymentRecords: [], total: 0 });
+        }
+        studentFilter._id = studentRecord._id;
       }
-      studentFilter._id = studentRecord._id;
-    }
-    // If user is a parent, only show their linked student's payments
-    else if (userRole === "Parent") {
-      const parentRecord = await Parent.findOne({ user_id: userId });
-      if (!parentRecord || !parentRecord.student_id) {
-        return res.json({ success: true, paymentRecords: [], total: 0 });
+      // If user is a parent, only show their linked student's payments
+      else if (userRole === "Parent") {
+        const parentRecord = await Parent.findOne({ user_id: userId });
+        if (!parentRecord || !parentRecord.student_id) {
+          return res.json({ success: true, paymentRecords: [], total: 0 });
+        }
+        studentFilter._id = parentRecord.student_id;
       }
-      studentFilter._id = parentRecord.student_id;
-    }
-    // Admin/SuperAdmin can filter by any criteria
-    else {
-      if (course && course !== "all") studentFilter.course_id = course;
-      if (batch && batch !== "all") studentFilter.batch_id = batch;
-      if (student && student !== "all") studentFilter._id = student;
-    }
+      // Admin/SuperAdmin can filter by any criteria
+      else {
+        if (course && course !== "all") studentFilter.course_id = course;
+        if (batch && batch !== "all") studentFilter.batch_id = batch;
+        if (student && student !== "all") studentFilter._id = student;
+      }
 
-    // Find students matching filter
-    const students = await Student.find(studentFilter)
-      .populate("user_id", "fname lname email phone")
-      .populate("course_id", "name")
-      .populate("batch_id", "name");
+      // Find students matching filter
+      const students = await Student.find(studentFilter)
+        .populate("user_id", "fname lname email phone")
+        .populate("course_id", "name")
+        .populate("batch_id", "name");
 
-    console.log(`📋 Found ${students.length} students`);
+      console.log(`📋 Found ${students.length} students`);
 
-    // For each student, get their payment details
-    const paymentRecords = [];
+      // For each student, get their payment details
+      const paymentRecords = [];
 
-    for (const student of students) {
-      // Get fee plan for student (try student-specific first, then batch default)
-      console.log(`\n👤 Processing student: ${student.fname} ${student.lname}`);
-      console.log(`   - Student ID: ${student._id}`);
-      console.log(`   - Batch ID: ${student.batch_id?._id}`);
-      console.log(
-        `   - Fee Plan ID (stored): ${student.fee_plan_id || "NOT SET"}`,
-      );
-      console.log(
-        `   - Discount Type (stored): ${student.discount_type || "NOT SET"}`,
-      );
+      for (const student of students) {
+        // Get fee plan for student (try student-specific first, then batch default)
+        console.log(
+          `\n👤 Processing student: ${student.fname} ${student.lname}`,
+        );
+        console.log(`   - Student ID: ${student._id}`);
+        console.log(`   - Batch ID: ${student.batch_id?._id}`);
+        console.log(
+          `   - Fee Plan ID (stored): ${student.fee_plan_id || "NOT SET"}`,
+        );
+        console.log(
+          `   - Discount Type (stored): ${student.discount_type || "NOT SET"}`,
+        );
 
-      let feePlan = null;
+        let feePlan = null;
 
-      if (student.fee_plan_id) {
-        feePlan = await FeePlan.findById(student.fee_plan_id);
+        if (student.fee_plan_id) {
+          feePlan = await FeePlan.findById(student.fee_plan_id);
+          if (!feePlan) {
+            console.log(
+              `   ⚠️ Fee plan ${student.fee_plan_id} not found! Will use batch default.`,
+            );
+          } else {
+            console.log(`   ✅ Found student's fee plan`);
+          }
+        }
+
+        if (!feePlan && student.batch_id) {
+          // Fallback to batch-level fee plan if student doesn't have one assigned
+          feePlan = await FeePlan.findOne({ batch_id: student.batch_id }).sort({
+            createdAt: -1,
+          });
+          if (feePlan) {
+            console.log(`   ℹ️  Using batch default fee plan: ${feePlan._id}`);
+          }
+        }
+
         if (!feePlan) {
-          console.log(
-            `   ⚠️ Fee plan ${student.fee_plan_id} not found! Will use batch default.`,
-          );
-        } else {
-          console.log(`   ✅ Found student's fee plan`);
-        }
-      }
-
-      if (!feePlan && student.batch_id) {
-        // Fallback to batch-level fee plan if student doesn't have one assigned
-        feePlan = await FeePlan.findOne({ batch_id: student.batch_id }).sort({
-          createdAt: -1,
-        });
-        if (feePlan) {
-          console.log(`   ℹ️  Using batch default fee plan: ${feePlan._id}`);
-        }
-      }
-
-      if (!feePlan) {
-        console.log(`⚠️ No fee plan for student ${student._id}, skipping...`);
-        continue;
-      }
-
-      console.log(`📋 Student ${student.fname} ${student.lname}:`);
-      console.log(`   - Fee Plan ID: ${feePlan._id}`);
-      console.log(`   - Fee Plan Total: ₹${feePlan.total_amount}`);
-      console.log(`   - Installments: ${feePlan.num_installments}`);
-      console.log(
-        `   - Student's Discount Type: ${student.discount_type || "None"}`,
-      );
-
-      // Calculate student's actual fee after applying their selected discount
-      let studentTotalFee = feePlan.total_amount;
-      let discountPercent = 0;
-
-      if (student.discount_type && feePlan.discount_types) {
-        const selectedDiscount = feePlan.discount_types.find(
-          (dt) => dt.code === student.discount_type,
-        );
-        if (selectedDiscount) {
-          discountPercent = selectedDiscount.discount_percent;
-          const discountAmount = studentTotalFee * (discountPercent / 100);
-          studentTotalFee = studentTotalFee - discountAmount;
-          console.log(
-            `   - Discount: ${selectedDiscount.name} (${discountPercent}%)`,
-          );
-          console.log(`   - After Discount: ₹${studentTotalFee.toFixed(2)}`);
-        }
-      }
-
-      // Add 18% GST to the discounted amount
-      const tax = studentTotalFee * 0.18;
-      studentTotalFee = studentTotalFee + tax;
-      console.log(`   - Tax (18%): ₹${tax.toFixed(2)}`);
-      console.log(`   - Final Total: ₹${studentTotalFee.toFixed(2)}`);
-
-      // Calculate student's per-installment amount
-      const studentInstallmentAmount =
-        studentTotalFee / feePlan.num_installments;
-      console.log(
-        `   - Per Installment: ₹${studentInstallmentAmount.toFixed(2)}`,
-      );
-
-      // Generate installments dynamically (no FeeInstallment collection needed)
-      const startDate = new Date();
-
-      // Track cumulative totals across all installments
-      let cumulativeDue = 0; // Total amount due so far
-      let cumulativePaid = 0; // Total amount paid so far
-      let carryForwardBalance = 0; // Balance carried from previous installments (+ for underpay, - for overpay)
-
-      // For each installment, calculate details and get payment details
-      for (let i = 1; i <= feePlan.num_installments; i++) {
-        // Calculate due date (1 month apart starting from next month)
-        const dueDate = new Date(startDate);
-        dueDate.setMonth(dueDate.getMonth() + i);
-
-        // Get payments for this installment number
-        const payments = await FeePayment.find({
-          student_id: student._id,
-          fee_plan_id: feePlan._id,
-          installment_no: i,
-        }).sort({ paid_date: -1 });
-
-        const round2 = (n) => Math.round((n || 0) * 100) / 100;
-        const EPS = 0.005;
-
-        // Base installment amount (with discount + tax) - same for all installments
-        const baseInstallmentAmount = round2(studentInstallmentAmount);
-
-        const totalPaid = round2(
-          payments.reduce((sum, p) => sum + (p.paid_amount || 0), 0),
-        );
-
-        // Calculate this installment's balance (considering any carry-forward from previous)
-        const amountDueWithCarryForward = round2(
-          baseInstallmentAmount + carryForwardBalance,
-        );
-        const installmentBalance = round2(
-          amountDueWithCarryForward - totalPaid,
-        );
-
-        // Update cumulative totals (using base amount for display consistency)
-        cumulativeDue = round2(cumulativeDue + baseInstallmentAmount);
-        cumulativePaid = round2(cumulativePaid + totalPaid);
-
-        // Calculate global remaining (across all installments processed so far)
-        const globalRemaining = round2(cumulativeDue - cumulativePaid);
-
-        // Display amount is always the base (for summing purposes)
-        let displayAmount = baseInstallmentAmount;
-
-        // Remaining amount shows what's actually left to pay (including carry-forward)
-        // If there's an overpayment credit, this could be 0 or negative
-        let remainingAmount = round2(
-          Math.max(0, amountDueWithCarryForward - totalPaid),
-        );
-
-        // Carry forward the balance to next installment
-        if (i < feePlan.num_installments) {
-          carryForwardBalance = installmentBalance;
-        }
-
-        // Calculate payment status based on remaining amount
-        let paymentStatus = "pending";
-        if (remainingAmount <= EPS) {
-          // Fully paid
-          paymentStatus = "paid";
-        } else if (totalPaid > EPS) {
-          // Has some payment but not fully paid
-          paymentStatus = "partial";
-        } else if (new Date() > dueDate) {
-          // No payment and past due date
-          paymentStatus = "overdue";
-        }
-
-        // Filter by status if provided
-        if (status && status !== "all" && paymentStatus !== status) {
+          console.log(`⚠️ No fee plan for student ${student._id}, skipping...`);
           continue;
         }
 
-        // Skip zero-amount phantom installments (cleanup safety)
-        const amtForCheck = round2(displayAmount);
-        if (amtForCheck <= EPS && totalPaid <= EPS) {
-          continue;
+        console.log(`📋 Student ${student.fname} ${student.lname}:`);
+        console.log(`   - Fee Plan ID: ${feePlan._id}`);
+        console.log(`   - Fee Plan Total: ₹${feePlan.total_amount}`);
+        console.log(`   - Installments: ${feePlan.num_installments}`);
+        console.log(
+          `   - Student's Discount Type: ${student.discount_type || "None"}`,
+        );
+
+        // Calculate student's actual fee after applying their selected discount
+        let studentTotalFee = feePlan.total_amount;
+        let discountPercent = 0;
+
+        if (student.discount_type && feePlan.discount_types) {
+          const selectedDiscount = feePlan.discount_types.find(
+            (dt) => dt.code === student.discount_type,
+          );
+          if (selectedDiscount) {
+            discountPercent = selectedDiscount.discount_percent;
+            const discountAmount = studentTotalFee * (discountPercent / 100);
+            studentTotalFee = studentTotalFee - discountAmount;
+            console.log(
+              `   - Discount: ${selectedDiscount.name} (${discountPercent}%)`,
+            );
+            console.log(`   - After Discount: ₹${studentTotalFee.toFixed(2)}`);
+          }
         }
 
-        // Get last payment date
-        const lastPayment = payments.length > 0 ? payments[0] : null;
+        // Add 18% GST to the discounted amount
+        const tax = studentTotalFee * 0.18;
+        studentTotalFee = studentTotalFee + tax;
+        console.log(`   - Tax (18%): ₹${tax.toFixed(2)}`);
+        console.log(`   - Final Total: ₹${studentTotalFee.toFixed(2)}`);
 
-        paymentRecords.push({
-          // Student details
-          student_id: student._id,
-          student_name: `${student.fname} ${student.lname}`,
-          student_email: student.user_id?.email || "",
-          student_phone: student.user_id?.phone || "",
+        // Calculate student's per-installment amount
+        const studentInstallmentAmount =
+          studentTotalFee / feePlan.num_installments;
+        console.log(
+          `   - Per Installment: ₹${studentInstallmentAmount.toFixed(2)}`,
+        );
 
-          // Course & Batch details
-          course_id: student.course_id?._id,
-          course_name: student.course_id?.name || "",
-          batch_id: student.batch_id?._id,
-          batch_name: student.batch_id?.name || "",
+        // Generate installments dynamically (no FeeInstallment collection needed)
+        const startDate = new Date();
 
-          // Fee plan details (use student's actual total with discount + tax)
-          fee_plan_id: feePlan._id,
-          fee_plan_amount: round2(studentTotalFee),
+        // Track cumulative totals across all installments
+        let cumulativeDue = 0; // Total amount due so far
+        let cumulativePaid = 0; // Total amount paid so far
+        let carryForwardBalance = 0; // Balance carried from previous installments (+ for underpay, - for overpay)
 
-          // Installment details (calculated dynamically, no installment_id)
-          installment_no: i,
-          due_date: dueDate,
-          amount: displayAmount, // Always show base installment amount
+        // For each installment, calculate details and get payment details
+        for (let i = 1; i <= feePlan.num_installments; i++) {
+          // Calculate due date (1 month apart starting from next month)
+          const dueDate = new Date(startDate);
+          dueDate.setMonth(dueDate.getMonth() + i);
 
-          // Payment details
-          paid_amount: totalPaid,
-          remaining_amount: remainingAmount,
-          overall_remaining: round2(studentTotalFee - cumulativePaid), // Total remaining across all installments
-          status: paymentStatus,
-          last_paid_date: lastPayment?.paid_date,
-          receipt_no: lastPayment?.receipt_no,
+          // Get payments for this installment number
+          const payments = await FeePayment.find({
+            student_id: student._id,
+            fee_plan_id: feePlan._id,
+            installment_no: i,
+          }).sort({ paid_date: -1 });
 
-          // Additional info
-          payments: payments,
-          plan_id: feePlan._id,
-          total_installments: feePlan.num_installments,
-        });
+          const round2 = (n) => Math.round((n || 0) * 100) / 100;
+          const EPS = 0.005;
+
+          // Base installment amount (with discount + tax) - same for all installments
+          const baseInstallmentAmount = round2(studentInstallmentAmount);
+
+          const totalPaid = round2(
+            payments.reduce((sum, p) => sum + (p.paid_amount || 0), 0),
+          );
+
+          // Calculate this installment's balance (considering any carry-forward from previous)
+          const amountDueWithCarryForward = round2(
+            baseInstallmentAmount + carryForwardBalance,
+          );
+          const installmentBalance = round2(
+            amountDueWithCarryForward - totalPaid,
+          );
+
+          // Update cumulative totals (using base amount for display consistency)
+          cumulativeDue = round2(cumulativeDue + baseInstallmentAmount);
+          cumulativePaid = round2(cumulativePaid + totalPaid);
+
+          // Calculate global remaining (across all installments processed so far)
+          const globalRemaining = round2(cumulativeDue - cumulativePaid);
+
+          // Display amount is always the base (for summing purposes)
+          let displayAmount = baseInstallmentAmount;
+
+          // Remaining amount shows what's actually left to pay (including carry-forward)
+          // If there's an overpayment credit, this could be 0 or negative
+          let remainingAmount = round2(
+            Math.max(0, amountDueWithCarryForward - totalPaid),
+          );
+
+          // Carry forward the balance to next installment
+          if (i < feePlan.num_installments) {
+            carryForwardBalance = installmentBalance;
+          }
+
+          // Calculate payment status based on remaining amount
+          let paymentStatus = "pending";
+          if (remainingAmount <= EPS) {
+            // Fully paid
+            paymentStatus = "paid";
+          } else if (totalPaid > EPS) {
+            // Has some payment but not fully paid
+            paymentStatus = "partial";
+          } else if (new Date() > dueDate) {
+            // No payment and past due date
+            paymentStatus = "overdue";
+          }
+
+          // Filter by status if provided
+          if (status && status !== "all" && paymentStatus !== status) {
+            continue;
+          }
+
+          // Skip zero-amount phantom installments (cleanup safety)
+          const amtForCheck = round2(displayAmount);
+          if (amtForCheck <= EPS && totalPaid <= EPS) {
+            continue;
+          }
+
+          // Get last payment date
+          const lastPayment = payments.length > 0 ? payments[0] : null;
+
+          paymentRecords.push({
+            // Student details
+            student_id: student._id,
+            student_name: `${student.fname} ${student.lname}`,
+            student_email: student.user_id?.email || "",
+            student_phone: student.user_id?.phone || "",
+
+            // Course & Batch details
+            course_id: student.course_id?._id,
+            course_name: student.course_id?.name || "",
+            batch_id: student.batch_id?._id,
+            batch_name: student.batch_id?.name || "",
+
+            // Fee plan details (use student's actual total with discount + tax)
+            fee_plan_id: feePlan._id,
+            fee_plan_amount: round2(studentTotalFee),
+
+            // Installment details (calculated dynamically, no installment_id)
+            installment_no: i,
+            due_date: dueDate,
+            amount: displayAmount, // Always show base installment amount
+
+            // Payment details
+            paid_amount: totalPaid,
+            remaining_amount: remainingAmount,
+            overall_remaining: round2(studentTotalFee - cumulativePaid), // Total remaining across all installments
+            status: paymentStatus,
+            last_paid_date: lastPayment?.paid_date,
+            receipt_no: lastPayment?.receipt_no,
+
+            // Additional info
+            payments: payments,
+            plan_id: feePlan._id,
+            total_installments: feePlan.num_installments,
+          });
+        }
       }
+
+      console.log(`✅ Generated ${paymentRecords.length} payment records`);
+
+      res.json({
+        success: true,
+        paymentRecords,
+        total: paymentRecords.length,
+      });
+    } catch (err) {
+      console.error("❌ Error fetching student payments:", err);
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    console.log(`✅ Generated ${paymentRecords.length} payment records`);
-
-    res.json({
-      success: true,
-      paymentRecords,
-      total: paymentRecords.length,
-    });
-  } catch (err) {
-    console.error("❌ Error fetching student payments:", err);
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Record a payment against a specific installment for a student
-app.post("/api/record-payment", async (req, res) => {
-  try {
-    const {
-      student_id,
-      fee_plan_id,
-      installment_no,
-      paid_amount,
-      paid_date,
-      payment_mode,
-      transaction_id,
-      receipt_no,
-      remarks,
-    } = req.body || {};
+app.post(
+  "/api/record-payment",
+  verifyAuth,
+  verifyPermission("canEditAccounts"),
+  async (req, res) => {
+    try {
+      const {
+        student_id,
+        fee_plan_id,
+        installment_no,
+        paid_amount,
+        paid_date,
+        payment_mode,
+        transaction_id,
+        receipt_no,
+        remarks,
+      } = req.body || {};
 
-    // Basic validations
-    if (!student_id || !fee_plan_id || !installment_no) {
-      return res.status(400).json({
-        success: false,
-        message: "student_id, fee_plan_id, and installment_no are required",
-      });
-    }
-    if (
-      typeof paid_amount !== "number" ||
-      isNaN(paid_amount) ||
-      paid_amount <= 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "paid_amount must be a number greater than 0",
-      });
-    }
-
-    if (paid_date) {
-      const pd = new Date(paid_date);
-      const now = new Date();
-      if (isNaN(pd.getTime())) {
-        return res
-          .status(400)
-          .json({ success: false, message: "paid_date is invalid" });
-      }
-      if (pd > now) {
+      // Basic validations
+      if (!student_id || !fee_plan_id || !installment_no) {
         return res.status(400).json({
           success: false,
-          message: "Payment date cannot be in the future",
+          message: "student_id, fee_plan_id, and installment_no are required",
         });
       }
-    }
+      if (
+        typeof paid_amount !== "number" ||
+        isNaN(paid_amount) ||
+        paid_amount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "paid_amount must be a number greater than 0",
+        });
+      }
 
-    // Ensure student and fee plan exist
-    const [studentDoc, feePlan] = await Promise.all([
-      Student.findById(student_id),
-      FeePlan.findById(fee_plan_id),
-    ]);
-    if (!studentDoc) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
-    }
-    if (!feePlan) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Fee plan not found" });
-    }
+      if (paid_date) {
+        const pd = new Date(paid_date);
+        const now = new Date();
+        if (isNaN(pd.getTime())) {
+          return res
+            .status(400)
+            .json({ success: false, message: "paid_date is invalid" });
+        }
+        if (pd > now) {
+          return res.status(400).json({
+            success: false,
+            message: "Payment date cannot be in the future",
+          });
+        }
+      }
 
-    // Validate installment number
-    if (installment_no < 1 || installment_no > feePlan.num_installments) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid installment number. Must be between 1 and ${feePlan.num_installments}`,
+      // Ensure student and fee plan exist
+      const [studentDoc, feePlan] = await Promise.all([
+        Student.findById(student_id),
+        FeePlan.findById(fee_plan_id),
+      ]);
+      if (!studentDoc) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Student not found" });
+      }
+      if (!feePlan) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Fee plan not found" });
+      }
+
+      // Validate installment number
+      if (installment_no < 1 || installment_no > feePlan.num_installments) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid installment number. Must be between 1 and ${feePlan.num_installments}`,
+        });
+      }
+
+      // Receipt uniqueness (if provided)
+      if (receipt_no) {
+        const existingReceipt = await FeePayment.findOne({ receipt_no });
+        if (existingReceipt) {
+          return res
+            .status(409)
+            .json({ success: false, message: "Receipt number already exists" });
+        }
+      }
+
+      // Calculate overall remaining balance for student
+      const round2 = (n) => Math.round((n || 0) * 100) / 100;
+      const EPS = 0.005;
+
+      // Calculate student's actual total fee (with discount + tax)
+      let studentTotalFee = feePlan.total_amount;
+
+      if (studentDoc.discount_type && feePlan.discount_types) {
+        const selectedDiscount = feePlan.discount_types.find(
+          (dt) => dt.code === studentDoc.discount_type,
+        );
+        if (selectedDiscount) {
+          const discountAmount =
+            studentTotalFee * (selectedDiscount.discount_percent / 100);
+          studentTotalFee = studentTotalFee - discountAmount;
+        }
+      }
+
+      // Add 18% GST
+      const tax = studentTotalFee * 0.18;
+      studentTotalFee = round2(studentTotalFee + tax);
+
+      // Calculate per-installment amount for this student
+      const studentInstallmentAmount = round2(
+        studentTotalFee / feePlan.num_installments,
+      );
+
+      // Calculate total expected for this student (with their discount + tax)
+      const totalExpected = round2(studentTotalFee);
+
+      // Calculate total paid across ALL installments for this student
+      let totalPaidAcrossAll = 0;
+      for (let i = 1; i <= feePlan.num_installments; i++) {
+        const instPayments = await FeePayment.find({
+          student_id,
+          fee_plan_id: feePlan._id,
+          installment_no: i,
+        });
+        totalPaidAcrossAll += instPayments.reduce(
+          (sum, p) => sum + (p.paid_amount || 0),
+          0,
+        );
+      }
+
+      totalPaidAcrossAll = round2(totalPaidAcrossAll);
+      const globalRemaining = round2(totalExpected - totalPaidAcrossAll);
+      const paidAmountRounded = round2(paid_amount);
+
+      console.log("\n💰 Payment Validation:");
+      console.log(`   Student: ${studentDoc.fname} ${studentDoc.lname}`);
+      console.log(`   Total Expected (with discount + tax): ₹${totalExpected}`);
+      console.log(`   Total Paid (all installments): ₹${totalPaidAcrossAll}`);
+      console.log(`   Global Remaining: ₹${globalRemaining}`);
+      console.log(`   Attempting to pay: ₹${paidAmountRounded}`);
+      console.log(
+        `   Validation: ${paidAmountRounded} <= ${globalRemaining} ? ${paidAmountRounded <= globalRemaining + 0.02}\n`,
+      );
+
+      // Validate payment doesn't exceed what's remaining globally
+      if (paidAmountRounded > globalRemaining + 0.02) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot record payment. Total remaining: ₹${globalRemaining.toFixed(
+            2,
+          )}. Please enter an amount ≤ ₹${globalRemaining.toFixed(2)}`,
+        });
+      }
+
+      // Payment is valid - proceed to record it
+      // Calculate what was remaining for this specific installment before payment
+      const existingPayments = await FeePayment.find({
+        student_id,
+        fee_plan_id: feePlan._id,
+        installment_no,
       });
-    }
+      const alreadyPaidThisInst = round2(
+        existingPayments.reduce((sum, p) => sum + (p.paid_amount || 0), 0),
+      );
+      const remainingBefore = round2(
+        Math.max(0, studentInstallmentAmount - alreadyPaidThisInst),
+      );
+      const paidRounded = round2(paid_amount);
 
-    // Receipt uniqueness (if provided)
-    if (receipt_no) {
-      const existingReceipt = await FeePayment.findOne({ receipt_no });
-      if (existingReceipt) {
+      // Calculate payment adjustment (overpayment or underpayment)
+      let adjustment = {
+        type: "none",
+        amount: 0,
+        next_installment_no: null,
+      };
+
+      if (paidRounded - remainingBefore > EPS) {
+        // OVERPAYMENT - excess will be deducted from next installment's amount
+        const excess = round2(paidRounded - remainingBefore);
+        const nextInstNo =
+          installment_no < feePlan.num_installments ? installment_no + 1 : null;
+        adjustment = {
+          type: "overpayment",
+          amount: excess,
+          next_installment_no: nextInstNo,
+        };
+      } else if (remainingBefore - paidRounded > EPS) {
+        // UNDERPAYMENT - balance will carry forward to next installment
+        const shortfall = round2(remainingBefore - paidRounded);
+        const nextInstNo =
+          installment_no < feePlan.num_installments ? installment_no + 1 : null;
+        adjustment = {
+          type: "underpayment",
+          amount: shortfall,
+          next_installment_no: nextInstNo,
+        };
+      }
+
+      // Normalize payment mode
+      const allowedModes = ["cash", "card", "upi", "bank_transfer", "cheque"];
+      const modeNorm = String(payment_mode || "cash").toLowerCase();
+      const finalMode = allowedModes.includes(modeNorm) ? modeNorm : "cash";
+
+      // Determine status for this payment record
+      const willRemain = Math.max(0, round2(remainingBefore - paidRounded));
+      const paymentStatus = willRemain <= 0 ? "paid" : "partial";
+      const payment = new FeePayment({
+        student_id,
+        fee_plan_id: feePlan._id,
+        installment_no,
+        paid_amount,
+        paid_date: paid_date ? new Date(paid_date) : new Date(),
+        payment_mode: finalMode,
+        transaction_id,
+        receipt_no, // pre-save hook will auto-generate if not provided
+        remarks,
+        status: paymentStatus,
+      });
+
+      await payment.save();
+
+      console.log("\n✅ Payment recorded successfully:");
+      console.log(`   Receipt: ${payment.receipt_no}`);
+      console.log(`   Amount: ₹${payment.paid_amount}`);
+      console.log(`   Installment: #${installment_no}`);
+      if (adjustment.type !== "none") {
+        console.log(
+          `   Adjustment: ${adjustment.type} - ₹${adjustment.amount.toFixed(2)}`,
+        );
+      }
+
+      // Note: In the new simplified system, overpayments/underpayments are handled automatically
+      // through cumulative calculation in /api/student-payments endpoint.
+      // No need to modify future installments - the system calculates remaining amounts dynamically.
+
+      // Build updated installment summary (for response)
+      const totalPaidNow = round2(alreadyPaidThisInst + paidRounded);
+      const remainingNow = Math.max(
+        0,
+        round2(studentInstallmentAmount - totalPaidNow),
+      );
+
+      let currentStatus = "pending";
+      if (remainingNow <= EPS) {
+        currentStatus = "paid";
+      } else if (totalPaidNow > EPS) {
+        currentStatus = "partial";
+      } else {
+        const startDate = new Date();
+        const dueDate = new Date(startDate);
+        dueDate.setMonth(dueDate.getMonth() + installment_no);
+        if (new Date() > dueDate) {
+          currentStatus = "overdue";
+        }
+      }
+
+      const updated_installment = {
+        installment_no: installment_no,
+        amount: studentInstallmentAmount,
+        paid_amount: totalPaidNow,
+        remaining_amount: remainingNow,
+        status: currentStatus,
+        last_paid_date: payment.paid_date,
+        last_receipt_no: payment.receipt_no,
+      };
+
+      return res.status(201).json({
+        success: true,
+        message: "Payment recorded successfully",
+        payment,
+        updated_installment,
+      });
+    } catch (err) {
+      // Handle duplicate key error for unique receipt number
+      if (err && err.code === 11000) {
         return res
           .status(409)
           .json({ success: false, message: "Receipt number already exists" });
       }
-    }
-
-    // Calculate overall remaining balance for student
-    const round2 = (n) => Math.round((n || 0) * 100) / 100;
-    const EPS = 0.005;
-
-    // Calculate student's actual total fee (with discount + tax)
-    let studentTotalFee = feePlan.total_amount;
-
-    if (studentDoc.discount_type && feePlan.discount_types) {
-      const selectedDiscount = feePlan.discount_types.find(
-        (dt) => dt.code === studentDoc.discount_type,
-      );
-      if (selectedDiscount) {
-        const discountAmount =
-          studentTotalFee * (selectedDiscount.discount_percent / 100);
-        studentTotalFee = studentTotalFee - discountAmount;
-      }
-    }
-
-    // Add 18% GST
-    const tax = studentTotalFee * 0.18;
-    studentTotalFee = round2(studentTotalFee + tax);
-
-    // Calculate per-installment amount for this student
-    const studentInstallmentAmount = round2(
-      studentTotalFee / feePlan.num_installments,
-    );
-
-    // Calculate total expected for this student (with their discount + tax)
-    const totalExpected = round2(studentTotalFee);
-
-    // Calculate total paid across ALL installments for this student
-    let totalPaidAcrossAll = 0;
-    for (let i = 1; i <= feePlan.num_installments; i++) {
-      const instPayments = await FeePayment.find({
-        student_id,
-        fee_plan_id: feePlan._id,
-        installment_no: i,
-      });
-      totalPaidAcrossAll += instPayments.reduce(
-        (sum, p) => sum + (p.paid_amount || 0),
-        0,
-      );
-    }
-
-    totalPaidAcrossAll = round2(totalPaidAcrossAll);
-    const globalRemaining = round2(totalExpected - totalPaidAcrossAll);
-    const paidAmountRounded = round2(paid_amount);
-
-    console.log("\n💰 Payment Validation:");
-    console.log(`   Student: ${studentDoc.fname} ${studentDoc.lname}`);
-    console.log(`   Total Expected (with discount + tax): ₹${totalExpected}`);
-    console.log(`   Total Paid (all installments): ₹${totalPaidAcrossAll}`);
-    console.log(`   Global Remaining: ₹${globalRemaining}`);
-    console.log(`   Attempting to pay: ₹${paidAmountRounded}`);
-    console.log(
-      `   Validation: ${paidAmountRounded} <= ${globalRemaining} ? ${paidAmountRounded <= globalRemaining + 0.02}\n`,
-    );
-
-    // Validate payment doesn't exceed what's remaining globally
-    if (paidAmountRounded > globalRemaining + 0.02) {
       return res.status(400).json({
         success: false,
-        message: `Cannot record payment. Total remaining: ₹${globalRemaining.toFixed(
-          2,
-        )}. Please enter an amount ≤ ₹${globalRemaining.toFixed(2)}`,
+        message: err?.message || "Failed to record payment",
       });
     }
-
-    // Payment is valid - proceed to record it
-    // Calculate what was remaining for this specific installment before payment
-    const existingPayments = await FeePayment.find({
-      student_id,
-      fee_plan_id: feePlan._id,
-      installment_no,
-    });
-    const alreadyPaidThisInst = round2(
-      existingPayments.reduce((sum, p) => sum + (p.paid_amount || 0), 0),
-    );
-    const remainingBefore = round2(
-      Math.max(0, studentInstallmentAmount - alreadyPaidThisInst),
-    );
-    const paidRounded = round2(paid_amount);
-
-    // Calculate payment adjustment (overpayment or underpayment)
-    let adjustment = {
-      type: "none",
-      amount: 0,
-      next_installment_no: null,
-    };
-
-    if (paidRounded - remainingBefore > EPS) {
-      // OVERPAYMENT - excess will be deducted from next installment's amount
-      const excess = round2(paidRounded - remainingBefore);
-      const nextInstNo =
-        installment_no < feePlan.num_installments ? installment_no + 1 : null;
-      adjustment = {
-        type: "overpayment",
-        amount: excess,
-        next_installment_no: nextInstNo,
-      };
-    } else if (remainingBefore - paidRounded > EPS) {
-      // UNDERPAYMENT - balance will carry forward to next installment
-      const shortfall = round2(remainingBefore - paidRounded);
-      const nextInstNo =
-        installment_no < feePlan.num_installments ? installment_no + 1 : null;
-      adjustment = {
-        type: "underpayment",
-        amount: shortfall,
-        next_installment_no: nextInstNo,
-      };
-    }
-
-    // Normalize payment mode
-    const allowedModes = ["cash", "card", "upi", "bank_transfer", "cheque"];
-    const modeNorm = String(payment_mode || "cash").toLowerCase();
-    const finalMode = allowedModes.includes(modeNorm) ? modeNorm : "cash";
-
-    // Determine status for this payment record
-    const willRemain = Math.max(0, round2(remainingBefore - paidRounded));
-    const paymentStatus = willRemain <= 0 ? "paid" : "partial";
-    const payment = new FeePayment({
-      student_id,
-      fee_plan_id: feePlan._id,
-      installment_no,
-      paid_amount,
-      paid_date: paid_date ? new Date(paid_date) : new Date(),
-      payment_mode: finalMode,
-      transaction_id,
-      receipt_no, // pre-save hook will auto-generate if not provided
-      remarks,
-      status: paymentStatus,
-    });
-
-    await payment.save();
-
-    console.log("\n✅ Payment recorded successfully:");
-    console.log(`   Receipt: ${payment.receipt_no}`);
-    console.log(`   Amount: ₹${payment.paid_amount}`);
-    console.log(`   Installment: #${installment_no}`);
-    if (adjustment.type !== "none") {
-      console.log(
-        `   Adjustment: ${adjustment.type} - ₹${adjustment.amount.toFixed(2)}`,
-      );
-    }
-
-    // Note: In the new simplified system, overpayments/underpayments are handled automatically
-    // through cumulative calculation in /api/student-payments endpoint.
-    // No need to modify future installments - the system calculates remaining amounts dynamically.
-
-    // Build updated installment summary (for response)
-    const totalPaidNow = round2(alreadyPaidThisInst + paidRounded);
-    const remainingNow = Math.max(
-      0,
-      round2(studentInstallmentAmount - totalPaidNow),
-    );
-
-    let currentStatus = "pending";
-    if (remainingNow <= EPS) {
-      currentStatus = "paid";
-    } else if (totalPaidNow > EPS) {
-      currentStatus = "partial";
-    } else {
-      const startDate = new Date();
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(dueDate.getMonth() + installment_no);
-      if (new Date() > dueDate) {
-        currentStatus = "overdue";
-      }
-    }
-
-    const updated_installment = {
-      installment_no: installment_no,
-      amount: studentInstallmentAmount,
-      paid_amount: totalPaidNow,
-      remaining_amount: remainingNow,
-      status: currentStatus,
-      last_paid_date: payment.paid_date,
-      last_receipt_no: payment.receipt_no,
-    };
-
-    return res.status(201).json({
-      success: true,
-      message: "Payment recorded successfully",
-      payment,
-      updated_installment,
-    });
-  } catch (err) {
-    // Handle duplicate key error for unique receipt number
-    if (err && err.code === 11000) {
-      return res
-        .status(409)
-        .json({ success: false, message: "Receipt number already exists" });
-    }
-    return res.status(400).json({
-      success: false,
-      message: err?.message || "Failed to record payment",
-    });
-  }
-});
+  },
+);
 
 // ===== EXAMS ROUTES =====
 
 // Get all exams with filters
-app.get("/api/exams", verifyAuth, async (req, res) => {
-  try {
-    const { batch_id, status, page = 1, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
+app.get(
+  "/api/exams",
+  verifyAuth,
+  verifyPermission("canViewExams"),
+  async (req, res) => {
+    try {
+      const { batch_id, status, page = 1, limit = 10 } = req.query;
+      const skip = (page - 1) * limit;
 
-    const filter = {};
-    if (batch_id) filter.batch_id = batch_id;
-    if (status) filter.status = status;
+      const filter = {};
+      if (batch_id) filter.batch_id = batch_id;
+      if (status) filter.status = status;
 
-    // Add branch filter
-    const isSuperAdmin = req.user?.isSuperAdmin;
-    const branchId = req.headers["x-branch-id"];
+      // Add branch filter
+      const isSuperAdmin = req.user?.isSuperAdmin;
+      const branchId = req.headers["x-branch-id"];
 
-    if (branchId) {
-      filter.branchId = branchId;
-    } else if (!isSuperAdmin && req.user?.primaryBranch) {
-      filter.branchId = req.user.primaryBranch;
-    }
-
-    // Role-based filtering
-    const userRole = req.user?.role;
-    const userId = req.user?.id;
-
-    if (userRole === "Student") {
-      // Find student's batch
-      const student = await Student.findOne({ user_id: userId });
-      if (student && student.batch_id) {
-        filter.batch_id = student.batch_id;
-      } else {
-        // Student has no batch, return empty
-        return res.json({
-          success: true,
-          exams: [],
-          total: 0,
-          page: parseInt(page),
-          totalPages: 0,
-        });
+      if (branchId) {
+        filter.branchId = branchId;
+      } else if (!isSuperAdmin && req.user?.primaryBranch) {
+        filter.branchId = req.user.primaryBranch;
       }
-    } else if (userRole === "Parent") {
-      // Find all parent records for this user (parent can have multiple children)
-      const parents = await Parent.find({ user_id: userId });
-      if (parents && parents.length > 0) {
-        const childrenIds = parents.map((p) => p.student_id).filter(Boolean);
 
-        if (childrenIds.length > 0) {
-          const students = await Student.find({ _id: { $in: childrenIds } });
-          const batchIds = students.map((s) => s.batch_id).filter(Boolean);
+      // Role-based filtering
+      const userRole = req.user?.role;
+      const userId = req.user?.id;
 
-          if (batchIds.length > 0) {
-            filter.batch_id = { $in: batchIds };
+      if (userRole === "Student") {
+        // Find student's batch
+        const student = await Student.findOne({ user_id: userId });
+        if (student && student.batch_id) {
+          filter.batch_id = student.batch_id;
+        } else {
+          // Student has no batch, return empty
+          return res.json({
+            success: true,
+            exams: [],
+            total: 0,
+            page: parseInt(page),
+            totalPages: 0,
+          });
+        }
+      } else if (userRole === "Parent") {
+        // Find all parent records for this user (parent can have multiple children)
+        const parents = await Parent.find({ user_id: userId });
+        if (parents && parents.length > 0) {
+          const childrenIds = parents.map((p) => p.student_id).filter(Boolean);
+
+          if (childrenIds.length > 0) {
+            const students = await Student.find({ _id: { $in: childrenIds } });
+            const batchIds = students.map((s) => s.batch_id).filter(Boolean);
+
+            if (batchIds.length > 0) {
+              filter.batch_id = { $in: batchIds };
+            } else {
+              // No children with batches, return empty
+              return res.json({
+                success: true,
+                exams: [],
+                total: 0,
+                page: parseInt(page),
+                totalPages: 0,
+              });
+            }
           } else {
-            // No children with batches, return empty
+            // Parent has no children, return empty
             return res.json({
               success: true,
               exams: [],
@@ -4952,7 +5303,7 @@ app.get("/api/exams", verifyAuth, async (req, res) => {
             });
           }
         } else {
-          // Parent has no children, return empty
+          // Parent record not found, return empty
           return res.json({
             success: true,
             exams: [],
@@ -4961,143 +5312,139 @@ app.get("/api/exams", verifyAuth, async (req, res) => {
             totalPages: 0,
           });
         }
-      } else {
-        // Parent record not found, return empty
-        return res.json({
-          success: true,
-          exams: [],
-          total: 0,
-          page: parseInt(page),
-          totalPages: 0,
-        });
       }
+      // For Admin, SuperAdmin, Teacher - show all exams (no additional filter)
+
+      const total = await Exam.countDocuments(filter);
+      const exams = await Exam.find(filter)
+        .populate("batch_id", "name course_id")
+        .sort({ date: -1 })
+        .limit(parseInt(limit))
+        .skip(skip);
+
+      res.json({
+        success: true,
+        exams,
+        total,
+        page: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (err) {
+      console.error("Error fetching exams:", err);
+      res.status(500).json({ success: false, message: err.message });
     }
-    // For Admin, SuperAdmin, Teacher - show all exams (no additional filter)
-
-    const total = await Exam.countDocuments(filter);
-    const exams = await Exam.find(filter)
-      .populate("batch_id", "name course_id")
-      .sort({ date: -1 })
-      .limit(parseInt(limit))
-      .skip(skip);
-
-    res.json({
-      success: true,
-      exams,
-      total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit),
-    });
-  } catch (err) {
-    console.error("Error fetching exams:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // ===== EXAM BULK UPLOAD ROUTES =====
 
 // Download exam template
-app.get("/api/exams/template", async (req, res) => {
-  console.log("Exam template download requested");
-  try {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Exams");
+app.get(
+  "/api/exams/template",
+  verifyAuth,
+  verifyPermission("canEditExams"),
+  async (req, res) => {
+    console.log("Exam template download requested");
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Exams");
 
-    // Define columns
-    worksheet.columns = [
-      { header: "Batch ID *", key: "batch_id", width: 25 },
-      { header: "Exam Type *", key: "exam_type", width: 20 },
-      { header: "Subject *", key: "subject", width: 20 },
-      { header: "Topic *", key: "topic", width: 30 },
-      { header: "Date (YYYY-MM-DD) *", key: "date", width: 18 },
-      { header: "Total Marks *", key: "total_marks", width: 15 },
-      { header: "Exam Link (for online)", key: "exam_link", width: 40 },
-    ];
+      // Define columns
+      worksheet.columns = [
+        { header: "Batch ID *", key: "batch_id", width: 25 },
+        { header: "Exam Type *", key: "exam_type", width: 20 },
+        { header: "Subject *", key: "subject", width: 20 },
+        { header: "Topic *", key: "topic", width: 30 },
+        { header: "Date (YYYY-MM-DD) *", key: "date", width: 18 },
+        { header: "Total Marks *", key: "total_marks", width: 15 },
+        { header: "Exam Link (for online)", key: "exam_link", width: 40 },
+      ];
 
-    // Add sample row with instructions
-    worksheet.addRow({
-      batch_id: "672d9afc4f4bd24df0c3e4b9",
-      exam_type: "on_theory",
-      subject: "Mathematics",
-      topic: "Algebra - Final Exam",
-      date: "2025-11-15",
-      total_marks: 100,
-      exam_link: "https://example.com/exam-link",
-    });
+      // Add sample row with instructions
+      worksheet.addRow({
+        batch_id: "672d9afc4f4bd24df0c3e4b9",
+        exam_type: "on_theory",
+        subject: "Mathematics",
+        topic: "Algebra - Final Exam",
+        date: "2025-11-15",
+        total_marks: 100,
+        exam_link: "https://example.com/exam-link",
+      });
 
-    // Add a second example
-    worksheet.addRow({
-      batch_id: "672d9afc4f4bd24df0c3e4b9",
-      exam_type: "off_mcq",
-      subject: "Physics",
-      topic: "Mechanics - Unit Test",
-      date: "2025-11-20",
-      total_marks: 50,
-      exam_link: "",
-    });
+      // Add a second example
+      worksheet.addRow({
+        batch_id: "672d9afc4f4bd24df0c3e4b9",
+        exam_type: "off_mcq",
+        subject: "Physics",
+        topic: "Mechanics - Unit Test",
+        date: "2025-11-20",
+        total_marks: 50,
+        exam_link: "",
+      });
 
-    // Style header row
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    };
+      // Style header row
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE0E0E0" },
+      };
 
-    // Add notes sheet
-    const notesSheet = workbook.addWorksheet("Instructions");
-    notesSheet.getCell("A1").value = "INSTRUCTIONS FOR BULK EXAM UPLOAD";
-    notesSheet.getCell("A1").font = { bold: true, size: 14 };
+      // Add notes sheet
+      const notesSheet = workbook.addWorksheet("Instructions");
+      notesSheet.getCell("A1").value = "INSTRUCTIONS FOR BULK EXAM UPLOAD";
+      notesSheet.getCell("A1").font = { bold: true, size: 14 };
 
-    notesSheet.getCell("A3").value = "Required Fields (marked with *):";
-    notesSheet.getCell("A3").font = { bold: true };
+      notesSheet.getCell("A3").value = "Required Fields (marked with *):";
+      notesSheet.getCell("A3").font = { bold: true };
 
-    notesSheet.getCell("A4").value =
-      "• Batch ID: Get this from your batches list";
-    notesSheet.getCell("A5").value =
-      "• Exam Type: Must be one of: on_theory, off_theory, on_mcq, off_mcq";
-    notesSheet.getCell("A6").value = "• Subject: Name of the subject";
-    notesSheet.getCell("A7").value = "• Topic: Exam topic or title";
-    notesSheet.getCell("A8").value =
-      "• Date: Format YYYY-MM-DD (e.g., 2025-11-15)";
-    notesSheet.getCell("A9").value =
-      "• Total Marks: Number of marks (e.g., 100)";
+      notesSheet.getCell("A4").value =
+        "• Batch ID: Get this from your batches list";
+      notesSheet.getCell("A5").value =
+        "• Exam Type: Must be one of: on_theory, off_theory, on_mcq, off_mcq";
+      notesSheet.getCell("A6").value = "• Subject: Name of the subject";
+      notesSheet.getCell("A7").value = "• Topic: Exam topic or title";
+      notesSheet.getCell("A8").value =
+        "• Date: Format YYYY-MM-DD (e.g., 2025-11-15)";
+      notesSheet.getCell("A9").value =
+        "• Total Marks: Number of marks (e.g., 100)";
 
-    notesSheet.getCell("A11").value = "Optional Fields:";
-    notesSheet.getCell("A11").font = { bold: true };
-    notesSheet.getCell("A12").value =
-      "• Exam Link: Required only for online exams (on_theory, on_mcq)";
+      notesSheet.getCell("A11").value = "Optional Fields:";
+      notesSheet.getCell("A11").font = { bold: true };
+      notesSheet.getCell("A12").value =
+        "• Exam Link: Required only for online exams (on_theory, on_mcq)";
 
-    notesSheet.getCell("A14").value = "Valid Exam Types:";
-    notesSheet.getCell("A14").font = { bold: true };
-    notesSheet.getCell("A15").value = "• on_theory = Online Theory Exam";
-    notesSheet.getCell("A16").value = "• off_theory = Offline Theory Exam";
-    notesSheet.getCell("A17").value = "• on_mcq = Online MCQ Exam";
-    notesSheet.getCell("A18").value = "• off_mcq = Offline MCQ Exam";
+      notesSheet.getCell("A14").value = "Valid Exam Types:";
+      notesSheet.getCell("A14").font = { bold: true };
+      notesSheet.getCell("A15").value = "• on_theory = Online Theory Exam";
+      notesSheet.getCell("A16").value = "• off_theory = Offline Theory Exam";
+      notesSheet.getCell("A17").value = "• on_mcq = Online MCQ Exam";
+      notesSheet.getCell("A18").value = "• off_mcq = Offline MCQ Exam";
 
-    notesSheet.getColumn("A").width = 80;
+      notesSheet.getColumn("A").width = 80;
 
-    const buffer = await workbook.xlsx.writeBuffer();
+      const buffer = await workbook.xlsx.writeBuffer();
 
-    console.log("Exam template generated, size:", buffer.length, "bytes");
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="exam_template.xlsx"',
-    );
-    res.send(buffer);
-  } catch (error) {
-    console.error("Exam template generation error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to generate template",
-      error: error.message,
-    });
-  }
-});
+      console.log("Exam template generated, size:", buffer.length, "bytes");
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="exam_template.xlsx"',
+      );
+      res.send(buffer);
+    } catch (error) {
+      console.error("Exam template generation error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate template",
+        error: error.message,
+      });
+    }
+  },
+);
 
 // Bulk upload exams
 app.post(
@@ -5294,153 +5641,165 @@ app.post(
 );
 
 // Get exam by ID
-app.get("/api/exams/:id", async (req, res) => {
-  try {
-    const exam = await Exam.findById(req.params.id).populate(
-      "batch_id",
-      "name course_id",
-    );
+app.get(
+  "/api/exams/:id",
+  verifyAuth,
+  verifyPermission("canViewExams"),
+  async (req, res) => {
+    try {
+      const exam = await Exam.findById(req.params.id).populate(
+        "batch_id",
+        "name course_id",
+      );
 
-    if (!exam) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Exam not found" });
+      if (!exam) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Exam not found" });
+      }
+
+      res.json({ success: true, exam });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, exam });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Create exam
-app.post("/api/exams", async (req, res) => {
-  try {
-    // Get branchId from header or user's primaryBranch
-    const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
+app.post(
+  "/api/exams",
+  verifyAuth,
+  verifyPermission("canEditExams"),
+  async (req, res) => {
+    try {
+      // Get branchId from header or user's primaryBranch
+      const branchId = req.headers["x-branch-id"] || req.user?.primaryBranch;
 
-    const { batch_id, exam_type, subject, topic, date, total_marks } = req.body;
+      const { batch_id, exam_type, subject, topic, date, total_marks } =
+        req.body;
 
-    // Validate required fields
-    if (
-      !batch_id ||
-      !exam_type ||
-      !subject ||
-      !topic ||
-      !date ||
-      !total_marks
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "All required fields must be provided",
+      // Validate required fields
+      if (
+        !batch_id ||
+        !exam_type ||
+        !subject ||
+        !topic ||
+        !date ||
+        !total_marks
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "All required fields must be provided",
+        });
+      }
+
+      const exam = new Exam({
+        ...req.body,
+        branchId, // Auto-assign branch
       });
+      await exam.save();
+
+      const populated = await Exam.findById(exam._id).populate(
+        "batch_id",
+        "name course_id",
+      );
+      res.status(201).json({ success: true, exam: populated });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    const exam = new Exam({
-      ...req.body,
-      branchId, // Auto-assign branch
-    });
-    await exam.save();
-
-    const populated = await Exam.findById(exam._id).populate(
-      "batch_id",
-      "name course_id",
-    );
-    res.status(201).json({ success: true, exam: populated });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Update exam
-app.put("/api/exams/:id", async (req, res) => {
-  try {
-    const exam = await Exam.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    }).populate("batch_id", "name course_id");
+app.put(
+  "/api/exams/:id",
+  verifyAuth,
+  verifyPermission("canEditExams"),
+  async (req, res) => {
+    try {
+      const exam = await Exam.findByIdAndUpdate(req.params.id, req.body, {
+        new: true,
+        runValidators: true,
+      }).populate("batch_id", "name course_id");
 
-    if (!exam) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Exam not found" });
+      if (!exam) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Exam not found" });
+      }
+
+      res.json({ success: true, exam });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    res.json({ success: true, exam });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Delete exam
-app.delete("/api/exams/:id", async (req, res) => {
-  try {
-    // Also delete all related results
-    await Result.deleteMany({ exam_id: req.params.id });
-    await Exam.findByIdAndDelete(req.params.id);
+app.delete(
+  "/api/exams/:id",
+  verifyAuth,
+  verifyPermission("canEditExams"),
+  async (req, res) => {
+    try {
+      // Also delete all related results
+      await Result.deleteMany({ exam_id: req.params.id });
+      await Exam.findByIdAndDelete(req.params.id);
 
-    res.json({ success: true, message: "Exam and related results deleted" });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      res.json({ success: true, message: "Exam and related results deleted" });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Mark exam as completed (moves to results section)
-app.patch("/api/exams/:id/complete", async (req, res) => {
-  try {
-    const exam = await Exam.findByIdAndUpdate(
-      req.params.id,
-      { status: "completed" },
-      { new: true },
-    ).populate("batch_id", "name course_id");
+app.patch(
+  "/api/exams/:id/complete",
+  verifyAuth,
+  verifyPermission("canEditExams"),
+  async (req, res) => {
+    try {
+      const exam = await Exam.findByIdAndUpdate(
+        req.params.id,
+        { status: "completed" },
+        { new: true },
+      ).populate("batch_id", "name course_id");
 
-    res.json({ success: true, exam });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      res.json({ success: true, exam });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== RESULTS ROUTES =====
 
 // Get results with filters
-app.get("/api/results", verifyAuth, async (req, res) => {
-  try {
-    const { exam_id, student_id, batch_id, page = 1, limit = 50 } = req.query;
-    const skip = (page - 1) * limit;
+app.get(
+  "/api/results",
+  verifyAuth,
+  verifyPermission("canViewExams"),
+  async (req, res) => {
+    try {
+      const { exam_id, student_id, batch_id, page = 1, limit = 50 } = req.query;
+      const skip = (page - 1) * limit;
 
-    let filter = {};
-    if (exam_id) filter.exam_id = exam_id;
-    if (student_id) filter.student_id = student_id;
+      let filter = {};
+      if (exam_id) filter.exam_id = exam_id;
+      if (student_id) filter.student_id = student_id;
 
-    // Role-based filtering
-    const userRole = req.user?.role;
-    const userId = req.user?.id;
+      // Role-based filtering
+      const userRole = req.user?.role;
+      const userId = req.user?.id;
 
-    if (userRole === "Student") {
-      // Filter results for this student only
-      const student = await Student.findOne({ user_id: userId });
-      if (student) {
-        filter.student_id = student._id;
-      } else {
-        // Student record not found, return empty
-        return res.json({
-          success: true,
-          results: [],
-          total: 0,
-          page: parseInt(page),
-          totalPages: 0,
-        });
-      }
-    } else if (userRole === "Parent") {
-      // Find all parent records for this user (parent can have multiple children)
-      const parents = await Parent.find({ user_id: userId });
-      if (parents && parents.length > 0) {
-        const childrenIds = parents.map((p) => p.student_id).filter(Boolean);
-
-        if (childrenIds.length > 0) {
-          filter.student_id = { $in: childrenIds };
+      if (userRole === "Student") {
+        // Filter results for this student only
+        const student = await Student.findOne({ user_id: userId });
+        if (student) {
+          filter.student_id = student._id;
         } else {
-          // Parent has no children, return empty
+          // Student record not found, return empty
           return res.json({
             success: true,
             results: [],
@@ -5449,345 +5808,392 @@ app.get("/api/results", verifyAuth, async (req, res) => {
             totalPages: 0,
           });
         }
-      } else {
-        // Parent record not found, return empty
-        return res.json({
-          success: true,
-          results: [],
-          total: 0,
-          page: parseInt(page),
-          totalPages: 0,
-        });
+      } else if (userRole === "Parent") {
+        // Find all parent records for this user (parent can have multiple children)
+        const parents = await Parent.find({ user_id: userId });
+        if (parents && parents.length > 0) {
+          const childrenIds = parents.map((p) => p.student_id).filter(Boolean);
+
+          if (childrenIds.length > 0) {
+            filter.student_id = { $in: childrenIds };
+          } else {
+            // Parent has no children, return empty
+            return res.json({
+              success: true,
+              results: [],
+              total: 0,
+              page: parseInt(page),
+              totalPages: 0,
+            });
+          }
+        } else {
+          // Parent record not found, return empty
+          return res.json({
+            success: true,
+            results: [],
+            total: 0,
+            page: parseInt(page),
+            totalPages: 0,
+          });
+        }
       }
+      // For Admin, SuperAdmin, Teacher - show all results (no additional filter)
+
+      // If filtering by batch, first get exams for that batch
+      if (batch_id) {
+        const exams = await Exam.find({ batch_id }).select("_id");
+        filter.exam_id = { $in: exams.map((e) => e._id) };
+      }
+
+      const total = await Result.countDocuments(filter);
+      const results = await Result.find(filter)
+        .populate({
+          path: "exam_id",
+          select: "subject topic date total_marks batch_id",
+          populate: { path: "batch_id", select: "name" },
+        })
+        .populate("student_id", "f_name l_name user_id")
+        .sort({ created_at: -1 })
+        .limit(parseInt(limit))
+        .skip(skip);
+
+      res.json({
+        success: true,
+        results,
+        total,
+        page: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (err) {
+      console.error("Error fetching results:", err);
+      res.status(500).json({ success: false, message: err.message });
     }
-    // For Admin, SuperAdmin, Teacher - show all results (no additional filter)
-
-    // If filtering by batch, first get exams for that batch
-    if (batch_id) {
-      const exams = await Exam.find({ batch_id }).select("_id");
-      filter.exam_id = { $in: exams.map((e) => e._id) };
-    }
-
-    const total = await Result.countDocuments(filter);
-    const results = await Result.find(filter)
-      .populate({
-        path: "exam_id",
-        select: "subject topic date total_marks batch_id",
-        populate: { path: "batch_id", select: "name" },
-      })
-      .populate("student_id", "f_name l_name user_id")
-      .sort({ created_at: -1 })
-      .limit(parseInt(limit))
-      .skip(skip);
-
-    res.json({
-      success: true,
-      results,
-      total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit),
-    });
-  } catch (err) {
-    console.error("Error fetching results:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Get results for a specific exam
-app.get("/api/results/exam/:examId", async (req, res) => {
-  try {
-    const exam = await Exam.findById(req.params.examId).populate(
-      "batch_id",
-      "name",
-    );
+app.get(
+  "/api/results/exam/:examId",
+  verifyAuth,
+  verifyPermission("canViewExams"),
+  async (req, res) => {
+    try {
+      const exam = await Exam.findById(req.params.examId).populate(
+        "batch_id",
+        "name",
+      );
 
-    if (!exam) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Exam not found" });
+      if (!exam) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Exam not found" });
+      }
+
+      // Get all students in the batch
+      const students = await Student.find({ batch_id: exam.batch_id }).populate(
+        "user_id",
+        "fname lname",
+      );
+
+      // Get existing results
+      const results = await Result.find({ exam_id: exam._id });
+      const resultMap = new Map(
+        results.map((r) => [r.student_id.toString(), r]),
+      );
+
+      // Combine student list with their results
+      const studentsWithResults = students.map((student) => ({
+        student_id: student._id,
+        student_name: `${student.fname} ${student.lname}`,
+        marks_obtained:
+          resultMap.get(student._id.toString())?.marks_obtained || null,
+        grade: resultMap.get(student._id.toString())?.grade || null,
+        result_id: resultMap.get(student._id.toString())?._id || null,
+      }));
+
+      res.json({
+        success: true,
+        exam,
+        students: studentsWithResults,
+        total_students: students.length,
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    // Get all students in the batch
-    const students = await Student.find({ batch_id: exam.batch_id }).populate(
-      "user_id",
-      "fname lname",
-    );
-
-    // Get existing results
-    const results = await Result.find({ exam_id: exam._id });
-    const resultMap = new Map(results.map((r) => [r.student_id.toString(), r]));
-
-    // Combine student list with their results
-    const studentsWithResults = students.map((student) => ({
-      student_id: student._id,
-      student_name: `${student.fname} ${student.lname}`,
-      marks_obtained:
-        resultMap.get(student._id.toString())?.marks_obtained || null,
-      grade: resultMap.get(student._id.toString())?.grade || null,
-      result_id: resultMap.get(student._id.toString())?._id || null,
-    }));
-
-    res.json({
-      success: true,
-      exam,
-      students: studentsWithResults,
-      total_students: students.length,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Add/Update single result
-app.post("/api/results", verifyAuth, async (req, res) => {
-  try {
-    // Role-based access control - only Admin, SuperAdmin, and authorized Teachers can add results
-    const userRole = req.user?.role;
+app.post(
+  "/api/results",
+  verifyAuth,
+  verifyPermission("canEditExams"),
+  async (req, res) => {
+    try {
+      // Role-based access control - only Admin, SuperAdmin, and authorized Teachers can add results
+      const userRole = req.user?.role;
 
-    if (userRole === "Student" || userRole === "Parent") {
-      return res.status(403).json({
-        success: false,
-        message: "You do not have permission to add results",
-      });
+      if (userRole === "Student" || userRole === "Parent") {
+        return res.status(403).json({
+          success: false,
+          message: "You do not have permission to add results",
+        });
+      }
+
+      const { exam_id, student_id, marks_obtained, grade, remarks } = req.body;
+
+      if (!exam_id || !student_id || marks_obtained === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "exam_id, student_id, and marks_obtained are required",
+        });
+      }
+
+      // Check if result already exists
+      let result = await Result.findOne({ exam_id, student_id });
+
+      if (result) {
+        // Update existing result
+        result.marks_obtained = marks_obtained;
+        result.grade = grade;
+        result.remarks = remarks;
+        await result.save();
+      } else {
+        // Create new result
+        result = new Result({
+          exam_id,
+          student_id,
+          marks_obtained,
+          grade,
+          remarks,
+        });
+        await result.save();
+      }
+
+      const populated = await Result.findById(result._id)
+        .populate("exam_id", "subject topic total_marks")
+        .populate("student_id", "fname lname");
+
+      res.json({ success: true, result: populated });
+    } catch (err) {
+      console.error("Error adding result:", err);
+      res.status(400).json({ success: false, message: err.message });
     }
-
-    const { exam_id, student_id, marks_obtained, grade, remarks } = req.body;
-
-    if (!exam_id || !student_id || marks_obtained === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: "exam_id, student_id, and marks_obtained are required",
-      });
-    }
-
-    // Check if result already exists
-    let result = await Result.findOne({ exam_id, student_id });
-
-    if (result) {
-      // Update existing result
-      result.marks_obtained = marks_obtained;
-      result.grade = grade;
-      result.remarks = remarks;
-      await result.save();
-    } else {
-      // Create new result
-      result = new Result({
-        exam_id,
-        student_id,
-        marks_obtained,
-        grade,
-        remarks,
-      });
-      await result.save();
-    }
-
-    const populated = await Result.findById(result._id)
-      .populate("exam_id", "subject topic total_marks")
-      .populate("student_id", "fname lname");
-
-    res.json({ success: true, result: populated });
-  } catch (err) {
-    console.error("Error adding result:", err);
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Bulk upload results
-app.post("/api/results/bulk", verifyAuth, async (req, res) => {
-  try {
-    // Role-based access control - only Admin, SuperAdmin, and authorized Teachers can bulk upload
-    const userRole = req.user?.role;
+app.post(
+  "/api/results/bulk",
+  verifyAuth,
+  verifyPermission("canEditExams"),
+  async (req, res) => {
+    try {
+      // Role-based access control - only Admin, SuperAdmin, and authorized Teachers can bulk upload
+      const userRole = req.user?.role;
 
-    if (userRole === "Student" || userRole === "Parent") {
-      return res.status(403).json({
-        success: false,
-        message: "You do not have permission to upload results",
-      });
-    }
-
-    const { exam_id, results } = req.body;
-
-    if (!exam_id || !Array.isArray(results) || results.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "exam_id and results array required",
-      });
-    }
-
-    const successfulResults = [];
-    const failedResults = [];
-
-    for (const item of results) {
-      try {
-        const { student_id, marks_obtained, grade } = item;
-
-        let result = await Result.findOne({ exam_id, student_id });
-
-        if (result) {
-          result.marks_obtained = marks_obtained;
-          result.grade = grade;
-          await result.save();
-        } else {
-          result = new Result({ exam_id, student_id, marks_obtained, grade });
-          await result.save();
-        }
-
-        successfulResults.push(result);
-      } catch (error) {
-        failedResults.push({ ...item, error: error.message });
+      if (userRole === "Student" || userRole === "Parent") {
+        return res.status(403).json({
+          success: false,
+          message: "You do not have permission to upload results",
+        });
       }
-    }
 
-    res.json({
-      success: true,
-      message: `${successfulResults.length} results saved, ${failedResults.length} failed`,
-      successful: successfulResults.length,
-      failed: failedResults,
-    });
-  } catch (err) {
-    console.error("Error in bulk upload results:", err);
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+      const { exam_id, results } = req.body;
+
+      if (!exam_id || !Array.isArray(results) || results.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "exam_id and results array required",
+        });
+      }
+
+      const successfulResults = [];
+      const failedResults = [];
+
+      for (const item of results) {
+        try {
+          const { student_id, marks_obtained, grade } = item;
+
+          let result = await Result.findOne({ exam_id, student_id });
+
+          if (result) {
+            result.marks_obtained = marks_obtained;
+            result.grade = grade;
+            await result.save();
+          } else {
+            result = new Result({ exam_id, student_id, marks_obtained, grade });
+            await result.save();
+          }
+
+          successfulResults.push(result);
+        } catch (error) {
+          failedResults.push({ ...item, error: error.message });
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `${successfulResults.length} results saved, ${failedResults.length} failed`,
+        successful: successfulResults.length,
+        failed: failedResults,
+      });
+    } catch (err) {
+      console.error("Error in bulk upload results:", err);
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Download results template for Excel upload
-app.get("/api/results/template/:examId", async (req, res) => {
-  try {
-    const exam = await Exam.findById(req.params.examId).populate(
-      "batch_id",
-      "name",
-    );
+app.get(
+  "/api/results/template/:examId",
+  verifyAuth,
+  verifyPermission("canEditExams"),
+  async (req, res) => {
+    try {
+      const exam = await Exam.findById(req.params.examId).populate(
+        "batch_id",
+        "name",
+      );
 
-    if (!exam) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Exam not found" });
-    }
+      if (!exam) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Exam not found" });
+      }
 
-    const students = await Student.find({ batch_id: exam.batch_id }).populate(
-      "user_id",
-      "fname lname",
-    );
+      const students = await Student.find({ batch_id: exam.batch_id }).populate(
+        "user_id",
+        "fname lname",
+      );
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Results");
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Results");
 
-    worksheet.columns = [
-      { header: "Student ID *", key: "student_id", width: 25 },
-      { header: "Student Name", key: "student_name", width: 30 },
-      { header: "Marks Obtained *", key: "marks_obtained", width: 18 },
-      { header: "Grade", key: "grade", width: 10 },
-    ];
+      worksheet.columns = [
+        { header: "Student ID *", key: "student_id", width: 25 },
+        { header: "Student Name", key: "student_name", width: 30 },
+        { header: "Marks Obtained *", key: "marks_obtained", width: 18 },
+        { header: "Grade", key: "grade", width: 10 },
+      ];
 
-    // Add students
-    students.forEach((student) => {
-      worksheet.addRow({
-        student_id: student._id.toString(),
-        student_name: `${student.fname} ${student.lname}`,
-        marks_obtained: "",
-        grade: "",
+      // Add students
+      students.forEach((student) => {
+        worksheet.addRow({
+          student_id: student._id.toString(),
+          student_name: `${student.fname} ${student.lname}`,
+          marks_obtained: "",
+          grade: "",
+        });
       });
-    });
 
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    };
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE0E0E0" },
+      };
 
-    const buffer = await workbook.xlsx.writeBuffer();
+      const buffer = await workbook.xlsx.writeBuffer();
 
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="results_${exam._id}.xlsx"`,
-    );
-    res.send(buffer);
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="results_${exam._id}.xlsx"`,
+      );
+      res.send(buffer);
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Upload results from Excel
-app.post("/api/results/upload", upload.single("file"), async (req, res) => {
-  try {
-    const { exam_id } = req.body;
+app.post(
+  "/api/results/upload",
+  verifyAuth,
+  verifyPermission("canEditExams"),
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { exam_id } = req.body;
 
-    if (!req.file || !exam_id) {
-      return res.status(400).json({
-        success: false,
-        message: "File and exam_id required",
-      });
-    }
-
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(req.file.buffer);
-    const worksheet = workbook.getWorksheet("Results");
-
-    if (!worksheet) {
-      return res.status(400).json({
-        success: false,
-        message: 'No "Results" worksheet found',
-      });
-    }
-
-    const results = [];
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber > 1) {
-        results.push({
-          student_id: row.getCell(1).value,
-          marks_obtained: row.getCell(3).value,
-          grade: row.getCell(4).value,
+      if (!req.file || !exam_id) {
+        return res.status(400).json({
+          success: false,
+          message: "File and exam_id required",
         });
       }
-    });
 
-    const successfulResults = [];
-    const failedResults = [];
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(req.file.buffer);
+      const worksheet = workbook.getWorksheet("Results");
 
-    for (const item of results) {
-      try {
-        if (!item.student_id || item.marks_obtained === null) continue;
-
-        let result = await Result.findOne({
-          exam_id,
-          student_id: item.student_id,
+      if (!worksheet) {
+        return res.status(400).json({
+          success: false,
+          message: 'No "Results" worksheet found',
         });
+      }
 
-        if (result) {
-          result.marks_obtained = item.marks_obtained;
-          result.grade = item.grade || "";
-          await result.save();
-        } else {
-          result = new Result({
+      const results = [];
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber > 1) {
+          results.push({
+            student_id: row.getCell(1).value,
+            marks_obtained: row.getCell(3).value,
+            grade: row.getCell(4).value,
+          });
+        }
+      });
+
+      const successfulResults = [];
+      const failedResults = [];
+
+      for (const item of results) {
+        try {
+          if (!item.student_id || item.marks_obtained === null) continue;
+
+          let result = await Result.findOne({
             exam_id,
             student_id: item.student_id,
-            marks_obtained: item.marks_obtained,
-            grade: item.grade || "",
           });
-          await result.save();
+
+          if (result) {
+            result.marks_obtained = item.marks_obtained;
+            result.grade = item.grade || "";
+            await result.save();
+          } else {
+            result = new Result({
+              exam_id,
+              student_id: item.student_id,
+              marks_obtained: item.marks_obtained,
+              grade: item.grade || "",
+            });
+            await result.save();
+          }
+
+          successfulResults.push(result);
+        } catch (error) {
+          failedResults.push({ ...item, error: error.message });
         }
-
-        successfulResults.push(result);
-      } catch (error) {
-        failedResults.push({ ...item, error: error.message });
       }
-    }
 
-    res.json({
-      success: true,
-      message: `${successfulResults.length} results uploaded successfully`,
-      successful: successfulResults.length,
-      failed: failedResults,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      res.json({
+        success: true,
+        message: `${successfulResults.length} results uploaded successfully`,
+        successful: successfulResults.length,
+        failed: failedResults,
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== ROLE PERMISSIONS ROUTES =====
 
@@ -5860,666 +6266,721 @@ app.put("/api/roles/:role/permissions", verifyAuth, async (req, res) => {
 // ===== ENQUIRY MANAGEMENT ROUTES =====
 
 // Get all enquiries with filtering
-app.get("/api/enquiries", verifyAuth, async (req, res) => {
-  try {
-    const {
-      status,
-      source,
-      interest,
-      assignedTo,
-      page = 1,
-      limit = 50,
-    } = req.query;
+app.get(
+  "/api/enquiries",
+  verifyAuth,
+  verifyPermission("canViewReports"),
+  async (req, res) => {
+    try {
+      const {
+        status,
+        source,
+        interest,
+        assignedTo,
+        page = 1,
+        limit = 50,
+      } = req.query;
 
-    let filter = {};
-    if (status) filter.status = status;
-    if (source) filter.source = source;
-    if (interest) filter.interest = interest;
-    if (assignedTo) filter.assignedTo = assignedTo;
+      let filter = {};
+      if (status) filter.status = status;
+      if (source) filter.source = source;
+      if (interest) filter.interest = interest;
+      if (assignedTo) filter.assignedTo = assignedTo;
 
-    // Date range filtering
-    const { from, to } = req.query;
-    if (from || to) {
-      filter.createdAt = {};
-      if (from) filter.createdAt.$gte = new Date(from);
-      if (to)
-        filter.createdAt.$lte = new Date(
-          new Date(to).setHours(23, 59, 59, 999),
-        );
-    }
-
-    // Branch filter
-    const branchId = req.headers["x-branch-id"];
-    if (branchId) {
-      const branchFilter = {
-        $or: [
-          { branchId: branchId },
-          { branchId: { $exists: false } },
-          { branchId: null },
-        ],
-      };
-
-      if (filter.$or) {
-        filter = { $and: [filter, branchFilter] };
-      } else {
-        filter = { ...filter, ...branchFilter };
+      // Date range filtering
+      const { from, to } = req.query;
+      if (from || to) {
+        filter.createdAt = {};
+        if (from) filter.createdAt.$gte = new Date(from);
+        if (to)
+          filter.createdAt.$lte = new Date(
+            new Date(to).setHours(23, 59, 59, 999),
+          );
       }
-    }
 
-    const skip = (page - 1) * limit;
-
-    const enquiries = await Enquiry.find(filter)
-      .populate("assignedTo", "name email")
-      .populate("createdBy", "name email")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await Enquiry.countDocuments(filter);
-
-    res.json({
-      success: true,
-      data: enquiries,
-      pagination: {
-        current: parseInt(page),
-        total: Math.ceil(total / limit),
-        count: enquiries.length,
-        totalRecords: total,
-      },
-    });
-  } catch (err) {
-    console.error("Get enquiries error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Get metadata for enquiry filters (Unique sources, interests, and users for assignment)
-app.get("/api/enquiries/meta", verifyAuth, async (req, res) => {
-  try {
-    const branchId = req.headers["x-branch-id"];
-    const filter = branchId
-      ? {
+      // Branch filter
+      const branchId = req.headers["x-branch-id"];
+      if (branchId) {
+        const branchFilter = {
           $or: [
             { branchId: branchId },
-            { branchId: null },
             { branchId: { $exists: false } },
+            { branchId: null },
           ],
+        };
+
+        if (filter.$or) {
+          filter = { $and: [filter, branchFilter] };
+        } else {
+          filter = { ...filter, ...branchFilter };
         }
-      : {};
+      }
 
-    const [sources, interests, users] = await Promise.all([
-      Enquiry.distinct("source", filter),
-      Enquiry.distinct("interest", filter),
-      User.find({
-        status: true,
-        role: { $in: ["Admin", "SuperAdmin", "Teacher"] },
-      }).select("name fname lname email role"),
-    ]);
+      const skip = (page - 1) * limit;
 
-    // Format users for selection
-    const formattedUsers = users.map((u) => ({
-      _id: u._id,
-      name: u.name || `${u.fname} ${u.lname}`,
-      role: u.role,
-    }));
+      const enquiries = await Enquiry.find(filter)
+        .populate("assignedTo", "name email")
+        .populate("createdBy", "name email")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
 
-    res.json({
-      success: true,
-      data: {
-        sources: sources.filter(Boolean).sort(),
-        interests: interests.filter(Boolean).sort(),
-        users: formattedUsers,
-      },
-    });
-  } catch (err) {
-    console.error("Enquiry meta error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      const total = await Enquiry.countDocuments(filter);
+
+      res.json({
+        success: true,
+        data: enquiries,
+        pagination: {
+          current: parseInt(page),
+          total: Math.ceil(total / limit),
+          count: enquiries.length,
+          totalRecords: total,
+        },
+      });
+    } catch (err) {
+      console.error("Get enquiries error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
+
+// Get metadata for enquiry filters (Unique sources, interests, and users for assignment)
+app.get(
+  "/api/enquiries/meta",
+  verifyAuth,
+  verifyPermission("canViewReports"),
+  async (req, res) => {
+    try {
+      const branchId = req.headers["x-branch-id"];
+      const filter = branchId
+        ? {
+            $or: [
+              { branchId: branchId },
+              { branchId: null },
+              { branchId: { $exists: false } },
+            ],
+          }
+        : {};
+
+      const [sources, interests, users] = await Promise.all([
+        Enquiry.distinct("source", filter),
+        Enquiry.distinct("interest", filter),
+        User.find({
+          status: true,
+          role: { $in: ["Admin", "SuperAdmin", "Teacher"] },
+        }).select("name fname lname email role"),
+      ]);
+
+      // Format users for selection
+      const formattedUsers = users.map((u) => ({
+        _id: u._id,
+        name: u.name || `${u.fname} ${u.lname}`,
+        role: u.role,
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          sources: sources.filter(Boolean).sort(),
+          interests: interests.filter(Boolean).sort(),
+          users: formattedUsers,
+        },
+      });
+    } catch (err) {
+      console.error("Enquiry meta error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // ===== ENQUIRY TEMPLATE DOWNLOAD (Must be before :status route) =====
-app.get("/api/enquiries/template", async (req, res) => {
-  console.log("📥 Enquiry template download requested");
+app.get(
+  "/api/enquiries/template",
+  verifyAuth,
+  verifyPermission("canEditReports"),
+  async (req, res) => {
+    console.log("📥 Enquiry template download requested");
 
-  try {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Enquiries");
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Enquiries");
 
-    // ✅ Define columns (IMPORTANT)
-    worksheet.columns = [
-      { header: "First Name *", key: "fname", width: 15 },
-      { header: "Last Name *", key: "lname", width: 15 },
-      { header: "Phone *", key: "phone", width: 15 },
-      { header: "Email", key: "email", width: 25 },
-      { header: "Source *", key: "source", width: 20 },
-      { header: "Interest *", key: "interest", width: 20 },
-      { header: "Address", key: "address", width: 30 },
-      { header: "Location", key: "location", width: 15 },
-    ];
+      // ✅ Define columns (IMPORTANT)
+      worksheet.columns = [
+        { header: "First Name *", key: "fname", width: 15 },
+        { header: "Last Name *", key: "lname", width: 15 },
+        { header: "Phone *", key: "phone", width: 15 },
+        { header: "Email", key: "email", width: 25 },
+        { header: "Source *", key: "source", width: 20 },
+        { header: "Interest *", key: "interest", width: 20 },
+        { header: "Address", key: "address", width: 30 },
+        { header: "Location", key: "location", width: 15 },
+      ];
 
-    // ✅ Sample row (object-based, same as Students)
-    worksheet.addRow({
-      fname: "John",
-      lname: "Doe",
-      phone: "9876543210",
-      email: "john@example.com",
-      source: "Website",
-      interest: "Full Stack",
-      address: "123 Main Street, Apt 4B",
-      location: "Mumbai",
-    });
+      // ✅ Sample row (object-based, same as Students)
+      worksheet.addRow({
+        fname: "John",
+        lname: "Doe",
+        phone: "9876543210",
+        email: "john@example.com",
+        source: "Website",
+        interest: "Full Stack",
+        address: "123 Main Street, Apt 4B",
+        location: "Mumbai",
+      });
 
-    // ✅ Header styling (same pattern)
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    };
+      // ✅ Header styling (same pattern)
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE0E0E0" },
+      };
 
-    // ✅ Write buffer (same as Students)
-    const buffer = await workbook.xlsx.writeBuffer();
-    console.log("✅ Enquiry template generated:", buffer.length, "bytes");
+      // ✅ Write buffer (same as Students)
+      const buffer = await workbook.xlsx.writeBuffer();
+      console.log("✅ Enquiry template generated:", buffer.length, "bytes");
 
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="enquiry_template.xlsx"',
-    );
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="enquiry_template.xlsx"',
+      );
 
-    res.send(buffer);
-  } catch (error) {
-    console.error("❌ Enquiry template error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to generate enquiry template",
-      error: error.message,
-    });
-  }
-});
+      res.send(buffer);
+    } catch (error) {
+      console.error("❌ Enquiry template error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate enquiry template",
+        error: error.message,
+      });
+    }
+  },
+);
 
 // Get count for each status - for tab badges (MUST BE BEFORE :status route)
-app.get("/api/enquiries/counts", verifyAuth, async (req, res) => {
-  try {
-    console.log("📊 Fetching enquiry counts...");
+app.get(
+  "/api/enquiries/counts",
+  verifyAuth,
+  verifyPermission("canViewReports"),
+  async (req, res) => {
+    try {
+      console.log("📊 Fetching enquiry counts...");
 
-    const branchId = req.headers["x-branch-id"];
-    let filter = {};
-    if (branchId) {
-      filter.$or = [
-        { branchId: branchId },
-        { branchId: { $exists: false } },
-        { branchId: null },
-      ];
-    }
-
-    const [
-      rawCount,
-      coldLeadCount,
-      warmLeadCount,
-      hotLeadCount,
-      contactedCount,
-      interestedCount,
-      notInterestedCount,
-      enrolledCount,
-      lostCount,
-    ] = await Promise.all([
-      Enquiry.countDocuments({ ...filter, status: "raw" }),
-      Enquiry.countDocuments({ ...filter, status: "cold_lead" }),
-      Enquiry.countDocuments({ ...filter, status: "warm_lead" }),
-      Enquiry.countDocuments({ ...filter, status: "hot_lead" }),
-      Enquiry.countDocuments({ ...filter, status: "contacted" }),
-      Enquiry.countDocuments({ ...filter, status: "interested" }),
-      Enquiry.countDocuments({ ...filter, status: "not_interested" }),
-      Enquiry.countDocuments({ ...filter, status: "enrolled" }),
-      Enquiry.countDocuments({ ...filter, status: "lost" }),
-    ]);
-
-    const countsData = {
-      raw: rawCount,
-      cold_lead: coldLeadCount,
-      warm_lead: warmLeadCount,
-      hot_lead: hotLeadCount,
-      contacted: contactedCount,
-      interested: interestedCount,
-      not_interested: notInterestedCount,
-      enrolled: enrolledCount,
-      lost: lostCount,
-    };
-
-    console.log("📊 Counts result:", countsData);
-
-    res.json({
-      success: true,
-      data: countsData,
-    });
-  } catch (err) {
-    console.error("❌ Counts error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Get enquiries by status (for different tabs)
-app.get("/api/enquiries/:status", verifyAuth, async (req, res) => {
-  try {
-    const { status } = req.params;
-    const {
-      page = 1,
-      limit = 50,
-      search,
-      source,
-      interest,
-      assignedTo,
-      from,
-      to,
-    } = req.query;
-
-    console.log(`📊 Fetching enquiries with status: ${status}`);
-
-    let filter = { status };
-
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-      ];
-    }
-
-    if (source) filter.source = source;
-    if (interest) filter.interest = interest;
-    if (assignedTo) filter.assignedTo = assignedTo;
-
-    // Date range filtering
-    if (from || to) {
-      filter.createdAt = {};
-      if (from) filter.createdAt.$gte = new Date(from);
-      if (to)
-        filter.createdAt.$lte = new Date(
-          new Date(to).setHours(23, 59, 59, 999),
-        );
-    }
-
-    // Branch filter
-    const branchId = req.headers["x-branch-id"];
-    if (branchId) {
-      const branchFilter = {
-        $or: [
+      const branchId = req.headers["x-branch-id"];
+      let filter = {};
+      if (branchId) {
+        filter.$or = [
           { branchId: branchId },
           { branchId: { $exists: false } },
           { branchId: null },
-        ],
+        ];
+      }
+
+      const [
+        rawCount,
+        coldLeadCount,
+        warmLeadCount,
+        hotLeadCount,
+        contactedCount,
+        interestedCount,
+        notInterestedCount,
+        enrolledCount,
+        lostCount,
+      ] = await Promise.all([
+        Enquiry.countDocuments({ ...filter, status: "raw" }),
+        Enquiry.countDocuments({ ...filter, status: "cold_lead" }),
+        Enquiry.countDocuments({ ...filter, status: "warm_lead" }),
+        Enquiry.countDocuments({ ...filter, status: "hot_lead" }),
+        Enquiry.countDocuments({ ...filter, status: "contacted" }),
+        Enquiry.countDocuments({ ...filter, status: "interested" }),
+        Enquiry.countDocuments({ ...filter, status: "not_interested" }),
+        Enquiry.countDocuments({ ...filter, status: "enrolled" }),
+        Enquiry.countDocuments({ ...filter, status: "lost" }),
+      ]);
+
+      const countsData = {
+        raw: rawCount,
+        cold_lead: coldLeadCount,
+        warm_lead: warmLeadCount,
+        hot_lead: hotLeadCount,
+        contacted: contactedCount,
+        interested: interestedCount,
+        not_interested: notInterestedCount,
+        enrolled: enrolledCount,
+        lost: lostCount,
       };
 
-      if (filter.$or) {
-        filter = { $and: [filter, branchFilter] };
-      } else {
-        filter = { ...filter, ...branchFilter };
-      }
+      console.log("📊 Counts result:", countsData);
+
+      res.json({
+        success: true,
+        data: countsData,
+      });
+    } catch (err) {
+      console.error("❌ Counts error:", err);
+      res.status(500).json({ success: false, message: err.message });
     }
+  },
+);
 
-    const skip = (page - 1) * limit;
+// Get enquiries by status (for different tabs)
+app.get(
+  "/api/enquiries/:status",
+  verifyAuth,
+  verifyPermission("canViewReports"),
+  async (req, res) => {
+    try {
+      const { status } = req.params;
+      const {
+        page = 1,
+        limit = 50,
+        search,
+        source,
+        interest,
+        assignedTo,
+        from,
+        to,
+      } = req.query;
 
-    const enquiries = await Enquiry.find(filter)
-      .populate("assignedTo", "name email")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+      console.log(`📊 Fetching enquiries with status: ${status}`);
 
-    const total = await Enquiry.countDocuments(filter);
+      let filter = { status };
 
-    console.log(`📊 Found ${enquiries.length} enquiries, total: ${total}`);
+      if (search) {
+        filter.$or = [
+          { name: { $regex: search, $options: "i" } },
+          { phone: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+        ];
+      }
 
-    res.json({
-      success: true,
-      data: enquiries,
-      pagination: {
-        current: parseInt(page),
-        total: Math.ceil(total / limit),
-        count: enquiries.length,
-        totalRecords: total,
-      },
-    });
-  } catch (err) {
-    console.error("Get enquiries by status error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      if (source) filter.source = source;
+      if (interest) filter.interest = interest;
+      if (assignedTo) filter.assignedTo = assignedTo;
+
+      // Date range filtering
+      if (from || to) {
+        filter.createdAt = {};
+        if (from) filter.createdAt.$gte = new Date(from);
+        if (to)
+          filter.createdAt.$lte = new Date(
+            new Date(to).setHours(23, 59, 59, 999),
+          );
+      }
+
+      // Branch filter
+      const branchId = req.headers["x-branch-id"];
+      if (branchId) {
+        const branchFilter = {
+          $or: [
+            { branchId: branchId },
+            { branchId: { $exists: false } },
+            { branchId: null },
+          ],
+        };
+
+        if (filter.$or) {
+          filter = { $and: [filter, branchFilter] };
+        } else {
+          filter = { ...filter, ...branchFilter };
+        }
+      }
+
+      const skip = (page - 1) * limit;
+
+      const enquiries = await Enquiry.find(filter)
+        .populate("assignedTo", "name email")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      const total = await Enquiry.countDocuments(filter);
+
+      console.log(`📊 Found ${enquiries.length} enquiries, total: ${total}`);
+
+      res.json({
+        success: true,
+        data: enquiries,
+        pagination: {
+          current: parseInt(page),
+          total: Math.ceil(total / limit),
+          count: enquiries.length,
+          totalRecords: total,
+        },
+      });
+    } catch (err) {
+      console.error("Get enquiries by status error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Create new enquiry
-app.post("/api/enquiries", verifyAuth, async (req, res) => {
-  try {
-    console.log("� JWT Auth passed, user:", req.user);
-    console.log("�📝 Creating new enquiry with data:", req.body);
-    const {
-      firstName,
-      lastName,
-      name, // For backward compatibility
-      phone,
-      email,
-      source,
-      interest,
-      address,
-      location,
-      notes,
-    } = req.body;
-
-    // Handle both new format (firstName/lastName) and old format (name) for backward compatibility
-    let fName, lName;
-    if (firstName && lastName) {
-      fName = firstName;
-      lName = lastName;
-    } else if (name) {
-      // Split full name into first and last name
-      const nameParts = name.trim().split(" ");
-      fName = nameParts[0];
-      lName = nameParts.slice(1).join(" ") || "Unknown";
-    } else {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Missing required fields: firstName and lastName (or name), phone, source, or interest",
-      });
-    }
-
-    // Validate required fields
-    if (!fName || !phone || !source || !interest) {
-      console.log("❌ Missing required fields:", {
-        firstName: !!fName,
-        phone: !!phone,
-        source: !!source,
-        interest: !!interest,
-      });
-      return res.status(400).json({
-        success: false,
-        message:
-          "Missing required fields: firstName, lastName, phone, source, or interest",
-      });
-    }
-
-    // Validate phone format
-    if (!/^\d{10}$/.test(phone)) {
-      console.log("❌ Invalid phone format:", phone);
-      return res.status(400).json({
-        success: false,
-        message: "Phone number must be 10 digits",
-      });
-    }
-
-    // Check for duplicate phone
-    const existingEnquiry = await Enquiry.findOne({ phone });
-    if (existingEnquiry) {
-      console.log("❌ Duplicate phone number:", phone);
-      return res.status(400).json({
-        success: false,
-        message: "Enquiry with this phone number already exists",
-      });
-    }
-
-    const enquiry = new Enquiry({
-      firstName: fName.trim(),
-      lastName: lName.trim(),
-      phone,
-      email: email && email.trim() ? email.toLowerCase().trim() : undefined,
-      source,
-      interest,
-      address: address ? address.trim() : undefined,
-      location: location ? location.trim() : undefined,
-      notes: notes ? notes.trim() : undefined,
-      branchId: req.headers["x-branch-id"],
-      createdBy: req.user.id,
-    });
-
-    console.log("💾 Saving enquiry:", enquiry);
-    await enquiry.save();
-    // Increment global lead counter (non-blocking)
+app.post(
+  "/api/enquiries",
+  verifyAuth,
+  verifyPermission("canEditReports"),
+  async (req, res) => {
     try {
-      await Counter.findOneAndUpdate(
-        { key: "lead" },
-        { $inc: { seq: 1 }, $set: { updated_at: new Date() } },
-        { new: true, upsert: true },
-      );
-    } catch (e) {
-      console.error("Failed to increment lead counter:", e);
-    }
-    console.log("✅ Enquiry created successfully:", enquiry._id);
+      console.log("� JWT Auth passed, user:", req.user);
+      console.log("�📝 Creating new enquiry with data:", req.body);
+      const {
+        firstName,
+        lastName,
+        name, // For backward compatibility
+        phone,
+        email,
+        source,
+        interest,
+        address,
+        location,
+        notes,
+      } = req.body;
 
-    res.status(201).json({
-      success: true,
-      message: "Enquiry created successfully",
-      data: enquiry,
-    });
-  } catch (err) {
-    console.error("💥 Create enquiry error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Update enquiry
-app.put("/api/enquiries/:id", verifyAuth, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
-
-    // Validate phone if provided
-    if (updates.phone && !/^\d{10}$/.test(updates.phone)) {
-      return res.status(400).json({
-        success: false,
-        message: "Phone number must be 10 digits",
-      });
-    }
-
-    // Check for duplicate phone (exclude current enquiry)
-    if (updates.phone) {
-      const existingEnquiry = await Enquiry.findOne({
-        phone: updates.phone,
-        _id: { $ne: id },
-      });
-      if (existingEnquiry) {
+      // Handle both new format (firstName/lastName) and old format (name) for backward compatibility
+      let fName, lName;
+      if (firstName && lastName) {
+        fName = firstName;
+        lName = lastName;
+      } else if (name) {
+        // Split full name into first and last name
+        const nameParts = name.trim().split(" ");
+        fName = nameParts[0];
+        lName = nameParts.slice(1).join(" ") || "Unknown";
+      } else {
         return res.status(400).json({
           success: false,
-          message: "Another enquiry with this phone number already exists",
+          message:
+            "Missing required fields: firstName and lastName (or name), phone, source, or interest",
         });
       }
-    }
 
-    const enquiry = await Enquiry.findByIdAndUpdate(
-      id,
-      { ...updates, updatedAt: Date.now() },
-      { new: true, runValidators: true },
-    );
+      // Validate required fields
+      if (!fName || !phone || !source || !interest) {
+        console.log("❌ Missing required fields:", {
+          firstName: !!fName,
+          phone: !!phone,
+          source: !!source,
+          interest: !!interest,
+        });
+        return res.status(400).json({
+          success: false,
+          message:
+            "Missing required fields: firstName, lastName, phone, source, or interest",
+        });
+      }
 
-    if (!enquiry) {
-      return res.status(404).json({
-        success: false,
-        message: "Enquiry not found",
+      // Validate phone format
+      if (!/^\d{10}$/.test(phone)) {
+        console.log("❌ Invalid phone format:", phone);
+        return res.status(400).json({
+          success: false,
+          message: "Phone number must be 10 digits",
+        });
+      }
+
+      // Check for duplicate phone
+      const existingEnquiry = await Enquiry.findOne({ phone });
+      if (existingEnquiry) {
+        console.log("❌ Duplicate phone number:", phone);
+        return res.status(400).json({
+          success: false,
+          message: "Enquiry with this phone number already exists",
+        });
+      }
+
+      const enquiry = new Enquiry({
+        firstName: fName.trim(),
+        lastName: lName.trim(),
+        phone,
+        email: email && email.trim() ? email.toLowerCase().trim() : undefined,
+        source,
+        interest,
+        address: address ? address.trim() : undefined,
+        location: location ? location.trim() : undefined,
+        notes: notes ? notes.trim() : undefined,
+        branchId: req.headers["x-branch-id"],
+        createdBy: req.user.id,
       });
-    }
 
-    res.json({
-      success: true,
-      message: "Enquiry updated successfully",
-      data: enquiry,
-    });
-  } catch (err) {
-    console.error("Update enquiry error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      console.log("💾 Saving enquiry:", enquiry);
+      await enquiry.save();
+      // Increment global lead counter (non-blocking)
+      try {
+        await Counter.findOneAndUpdate(
+          { key: "lead" },
+          { $inc: { seq: 1 }, $set: { updated_at: new Date() } },
+          { new: true, upsert: true },
+        );
+      } catch (e) {
+        console.error("Failed to increment lead counter:", e);
+      }
+      console.log("✅ Enquiry created successfully:", enquiry._id);
+
+      res.status(201).json({
+        success: true,
+        message: "Enquiry created successfully",
+        data: enquiry,
+      });
+    } catch (err) {
+      console.error("💥 Create enquiry error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
+
+// Update enquiry
+app.put(
+  "/api/enquiries/:id",
+  verifyAuth,
+  verifyPermission("canEditReports"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+
+      // Validate phone if provided
+      if (updates.phone && !/^\d{10}$/.test(updates.phone)) {
+        return res.status(400).json({
+          success: false,
+          message: "Phone number must be 10 digits",
+        });
+      }
+
+      // Check for duplicate phone (exclude current enquiry)
+      if (updates.phone) {
+        const existingEnquiry = await Enquiry.findOne({
+          phone: updates.phone,
+          _id: { $ne: id },
+        });
+        if (existingEnquiry) {
+          return res.status(400).json({
+            success: false,
+            message: "Another enquiry with this phone number already exists",
+          });
+        }
+      }
+
+      const enquiry = await Enquiry.findByIdAndUpdate(
+        id,
+        { ...updates, updatedAt: Date.now() },
+        { new: true, runValidators: true },
+      );
+
+      if (!enquiry) {
+        return res.status(404).json({
+          success: false,
+          message: "Enquiry not found",
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Enquiry updated successfully",
+        data: enquiry,
+      });
+    } catch (err) {
+      console.error("Update enquiry error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Delete enquiry
-app.delete("/api/enquiries/:id", verifyAuth, async (req, res) => {
-  try {
-    const { id } = req.params;
+app.delete(
+  "/api/enquiries/:id",
+  verifyAuth,
+  verifyPermission("canEditReports"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    const enquiry = await Enquiry.findByIdAndDelete(id);
+      const enquiry = await Enquiry.findByIdAndDelete(id);
 
-    if (!enquiry) {
-      return res.status(404).json({
-        success: false,
-        message: "Enquiry not found",
+      if (!enquiry) {
+        return res.status(404).json({
+          success: false,
+          message: "Enquiry not found",
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Enquiry deleted successfully",
       });
+    } catch (err) {
+      console.error("Delete enquiry error:", err);
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    res.json({
-      success: true,
-      message: "Enquiry deleted successfully",
-    });
-  } catch (err) {
-    console.error("Delete enquiry error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Update enquiry status
-app.patch("/api/enquiries/:id/status", verifyAuth, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, notes, assignedTo } = req.body;
+app.patch(
+  "/api/enquiries/:id/status",
+  verifyAuth,
+  verifyPermission("canEditReports"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, notes, assignedTo } = req.body;
 
-    const updates = {
-      status,
-      updatedAt: Date.now(),
-    };
+      const updates = {
+        status,
+        updatedAt: Date.now(),
+      };
 
-    if (assignedTo) updates.assignedTo = assignedTo;
-    if (notes) updates.notes = notes;
+      if (assignedTo) updates.assignedTo = assignedTo;
+      if (notes) updates.notes = notes;
 
-    // Update last contacted if moving to contacted status
-    if (["contacted", "interested", "not_interested"].includes(status)) {
-      updates.lastContactedAt = Date.now();
-    }
+      // Update last contacted if moving to contacted status
+      if (["contacted", "interested", "not_interested"].includes(status)) {
+        updates.lastContactedAt = Date.now();
+      }
 
-    // Set conversion date if enrolled
-    if (status === "enrolled") {
-      updates.convertedDate = Date.now();
-    }
+      // Set conversion date if enrolled
+      if (status === "enrolled") {
+        updates.convertedDate = Date.now();
+      }
 
-    const enquiry = await Enquiry.findByIdAndUpdate(id, updates, {
-      new: true,
-      runValidators: true,
-    });
-
-    if (!enquiry) {
-      return res.status(404).json({
-        success: false,
-        message: "Enquiry not found",
+      const enquiry = await Enquiry.findByIdAndUpdate(id, updates, {
+        new: true,
+        runValidators: true,
       });
+
+      if (!enquiry) {
+        return res.status(404).json({
+          success: false,
+          message: "Enquiry not found",
+        });
+      }
+
+      // Recalculate lead score
+      enquiry.calculateLeadScore();
+      await enquiry.save();
+
+      res.json({
+        success: true,
+        message: "Enquiry status updated successfully",
+        data: enquiry,
+      });
+    } catch (err) {
+      console.error("Update enquiry status error:", err);
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    // Recalculate lead score
-    enquiry.calculateLeadScore();
-    await enquiry.save();
-
-    res.json({
-      success: true,
-      message: "Enquiry status updated successfully",
-      data: enquiry,
-    });
-  } catch (err) {
-    console.error("Update enquiry status error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Add contact attempt
-app.post("/api/enquiries/:id/contact", verifyAuth, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { method, response, notes, nextFollowUp } = req.body;
+app.post(
+  "/api/enquiries/:id/contact",
+  verifyAuth,
+  verifyPermission("canEditReports"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { method, response, notes, nextFollowUp } = req.body;
 
-    const enquiry = await Enquiry.findById(id);
+      const enquiry = await Enquiry.findById(id);
 
-    if (!enquiry) {
-      return res.status(404).json({
-        success: false,
-        message: "Enquiry not found",
+      if (!enquiry) {
+        return res.status(404).json({
+          success: false,
+          message: "Enquiry not found",
+        });
+      }
+
+      const contactAttempt = {
+        date: Date.now(),
+        method,
+        response,
+        notes,
+        nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : undefined,
+      };
+
+      enquiry.contactAttempts.push(contactAttempt);
+      enquiry.lastContactedAt = Date.now();
+
+      if (nextFollowUp) {
+        enquiry.nextFollowUpDate = new Date(nextFollowUp);
+      }
+
+      // Recalculate lead score based on contact attempt
+      enquiry.calculateLeadScore();
+
+      await enquiry.save();
+
+      res.json({
+        success: true,
+        message: "Contact attempt recorded successfully",
+        data: enquiry,
       });
+    } catch (err) {
+      console.error("Add contact attempt error:", err);
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    const contactAttempt = {
-      date: Date.now(),
-      method,
-      response,
-      notes,
-      nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : undefined,
-    };
-
-    enquiry.contactAttempts.push(contactAttempt);
-    enquiry.lastContactedAt = Date.now();
-
-    if (nextFollowUp) {
-      enquiry.nextFollowUpDate = new Date(nextFollowUp);
-    }
-
-    // Recalculate lead score based on contact attempt
-    enquiry.calculateLeadScore();
-
-    await enquiry.save();
-
-    res.json({
-      success: true,
-      message: "Contact attempt recorded successfully",
-      data: enquiry,
-    });
-  } catch (err) {
-    console.error("Add contact attempt error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Add note with timestamp
-app.post("/api/enquiries/:id/note", verifyAuth, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { note } = req.body;
+app.post(
+  "/api/enquiries/:id/note",
+  verifyAuth,
+  verifyPermission("canEditReports"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { note } = req.body;
 
-    if (!note || !note.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Note cannot be empty",
+      if (!note || !note.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Note cannot be empty",
+        });
+      }
+
+      const enquiry = await Enquiry.findById(id);
+
+      if (!enquiry) {
+        return res.status(404).json({
+          success: false,
+          message: "Enquiry not found",
+        });
+      }
+
+      // Initialize notesHistory if it doesn't exist
+      if (!enquiry.notesHistory) {
+        enquiry.notesHistory = [];
+      }
+
+      // Add note with timestamp
+      enquiry.notesHistory.push({
+        note: note.trim(),
+        addedBy: req.user.id,
+        addedAt: new Date(),
       });
-    }
 
-    const enquiry = await Enquiry.findById(id);
+      // Also update the legacy notes field for backward compatibility
+      enquiry.notes = note.trim();
 
-    if (!enquiry) {
-      return res.status(404).json({
-        success: false,
-        message: "Enquiry not found",
+      await enquiry.save();
+
+      res.json({
+        success: true,
+        message: "Note added successfully",
+        data: enquiry,
       });
+    } catch (err) {
+      console.error("Add note error:", err);
+      res.status(500).json({ success: false, message: err.message });
     }
-
-    // Initialize notesHistory if it doesn't exist
-    if (!enquiry.notesHistory) {
-      enquiry.notesHistory = [];
-    }
-
-    // Add note with timestamp
-    enquiry.notesHistory.push({
-      note: note.trim(),
-      addedBy: req.user.id,
-      addedAt: new Date(),
-    });
-
-    // Also update the legacy notes field for backward compatibility
-    enquiry.notes = note.trim();
-
-    await enquiry.save();
-
-    res.json({
-      success: true,
-      message: "Note added successfully",
-      data: enquiry,
-    });
-  } catch (err) {
-    console.error("Add note error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+  },
+);
 
 // Bulk upload enquiries
 // BULK UPLOAD ENQUIRIES (REPLACED IMPLEMENTATION)
@@ -6769,74 +7230,86 @@ app.post(
 );
 
 // Get enquiry analytics
-app.get("/api/enquiries/analytics", verifyAuth, async (req, res) => {
-  try {
-    const totalEnquiries = await Enquiry.countDocuments();
+app.get(
+  "/api/enquiries/analytics",
+  verifyAuth,
+  verifyPermission("canViewReports"),
+  async (req, res) => {
+    try {
+      const totalEnquiries = await Enquiry.countDocuments();
 
-    const statusCounts = await Enquiry.aggregate([
-      { $group: { _id: "$status", count: { $sum: 1 } } },
-    ]);
+      const statusCounts = await Enquiry.aggregate([
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]);
 
-    const sourceCounts = await Enquiry.aggregate([
-      { $group: { _id: "$source", count: { $sum: 1 } } },
-    ]);
+      const sourceCounts = await Enquiry.aggregate([
+        { $group: { _id: "$source", count: { $sum: 1 } } },
+      ]);
 
-    const interestCounts = await Enquiry.aggregate([
-      { $group: { _id: "$interest", count: { $sum: 1 } } },
-    ]);
+      const interestCounts = await Enquiry.aggregate([
+        { $group: { _id: "$interest", count: { $sum: 1 } } },
+      ]);
 
-    // Conversion rate
-    const convertedCount = await Enquiry.countDocuments({ status: "enrolled" });
-    const conversionRate =
-      totalEnquiries > 0 ? (convertedCount / totalEnquiries) * 100 : 0;
+      // Conversion rate
+      const convertedCount = await Enquiry.countDocuments({
+        status: "enrolled",
+      });
+      const conversionRate =
+        totalEnquiries > 0 ? (convertedCount / totalEnquiries) * 100 : 0;
 
-    // Monthly trends
-    const monthlyTrends = await Enquiry.aggregate([
-      {
-        $group: {
-          _id: {
-            year: { $year: "$createdAt" },
-            month: { $month: "$createdAt" },
+      // Monthly trends
+      const monthlyTrends = await Enquiry.aggregate([
+        {
+          $group: {
+            _id: {
+              year: { $year: "$createdAt" },
+              month: { $month: "$createdAt" },
+            },
+            count: { $sum: 1 },
           },
-          count: { $sum: 1 },
         },
-      },
-      { $sort: { "_id.year": 1, "_id.month": 1 } },
-      { $limit: 12 },
-    ]);
+        { $sort: { "_id.year": 1, "_id.month": 1 } },
+        { $limit: 12 },
+      ]);
 
-    res.json({
-      success: true,
-      data: {
-        total: totalEnquiries,
-        conversionRate: Math.round(conversionRate * 100) / 100,
-        converted: convertedCount,
-        byStatus: statusCounts,
-        bySource: sourceCounts,
-        byInterest: interestCounts,
-        monthlyTrends,
-      },
-    });
-  } catch (err) {
-    console.error("Analytics error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+      res.json({
+        success: true,
+        data: {
+          total: totalEnquiries,
+          conversionRate: Math.round(conversionRate * 100) / 100,
+          converted: convertedCount,
+          byStatus: statusCounts,
+          bySource: sourceCounts,
+          byInterest: interestCounts,
+          monthlyTrends,
+        },
+      });
+    } catch (err) {
+      console.error("Analytics error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // Health check for bulk upload endpoint
-app.get("/api/enquiries/bulk-upload/health", verifyAuth, async (req, res) => {
-  try {
-    res.json({
-      success: true,
-      message: "Bulk upload endpoint is accessible",
-      user: req.user?.id,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error("❌ Bulk upload health check error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+app.get(
+  "/api/enquiries/bulk-upload/health",
+  verifyAuth,
+  verifyPermission("canEditReports"),
+  async (req, res) => {
+    try {
+      res.json({
+        success: true,
+        message: "Bulk upload endpoint is accessible",
+        user: req.user?.id,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("❌ Bulk upload health check error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 import attendanceSync from "./services/attendanceSync.js";
 
