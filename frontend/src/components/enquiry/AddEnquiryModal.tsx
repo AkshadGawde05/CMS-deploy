@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { createEnquiry } from "@/lib/api";
+import { createEnquiry, getCourses } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 
 interface AddEnquiryModalProps {
@@ -26,17 +26,42 @@ export default function AddEnquiryModal({
     location: "",
   });
   const [saving, setSaving] = useState(false);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
 
   const sources = ["Website", "Facebook", "Google Ads", "Referral", "Walk-in", "Phone Call"];
-  const interests = ["Full Stack", "Data Science", "Digital Marketing", "UI/UX", "Python", "Java"];
+
+  // Fetch courses on component mount
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        setLoadingCourses(true);
+        const data = await getCourses(1, 100);
+        if (data.success && data.courses) {
+          setCourses(data.courses);
+        }
+      } catch (error) {
+        console.error("Failed to fetch courses:", error);
+        showToast({
+          type: 'error',
+          title: 'Failed to Load Courses',
+          message: 'Could not fetch available courses'
+        });
+      } finally {
+        setLoadingCourses(false);
+      }
+    };
+
+    fetchCourses();
+  }, [showToast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.firstName || !formData.lastName || !formData.phone || !formData.source || !formData.interest) {
+    if (!formData.firstName || !formData.phone || !formData.source || !formData.interest) {
       showToast({
         type: 'warning',
         title: 'Missing Required Fields',
-        message: 'Please fill in first name, last name, phone, source, and interest fields'
+        message: 'Please fill in first name, phone, source, and interest fields'
       });
       return;
     }
@@ -55,7 +80,7 @@ export default function AddEnquiryModal({
       showToast({
         type: 'success',
         title: 'Enquiry Created',
-        message: `Enquiry for ${formData.firstName} ${formData.lastName} has been created successfully`
+        message: `Enquiry for ${formData.firstName}${formData.lastName ? ' ' + formData.lastName : ''} has been created successfully`
       });
       onSuccess();
     } catch (error) {
@@ -116,7 +141,7 @@ export default function AddEnquiryModal({
             {/* Last Name */}
             <div>
               <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
-                Last Name *
+                Last Name
               </label>
               <input
                 type="text"
@@ -125,7 +150,6 @@ export default function AddEnquiryModal({
                 value={formData.lastName}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
-                required
               />
             </div>
 
@@ -226,10 +250,15 @@ export default function AddEnquiryModal({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
                 required
+                disabled={loadingCourses}
               >
-                <option value="">Select interest</option>
-                {interests.map(interest => (
-                  <option key={interest} value={interest}>{interest}</option>
+                <option value="">
+                  {loadingCourses ? "Loading courses..." : "Select interest"}
+                </option>
+                {courses.map(course => (
+                  <option key={course._id} value={course.name}>
+                    {course.name}
+                  </option>
                 ))}
               </select>
             </div>
