@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Plus, Search, Filter, Edit, Trash2, Upload, AlertTriangle, Calendar, Clock, Users, Archive } from 'lucide-react';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { getAllLectures, deleteLecture, archiveLecture, getArchivedLectures, restoreLecture } from '@/lib/api';
@@ -752,7 +752,7 @@ export default function LecturesPage() {
                     // Add ellipsis
                     const showEllipsisBefore = index > 0 && page - array[index - 1] > 1;
                     return (
-                      <React.Fragment key={page}>
+                      <Fragment key={page}>
                         {showEllipsisBefore && (
                           <span className="px-2 text-gray-500">...</span>
                         )}
@@ -766,7 +766,7 @@ export default function LecturesPage() {
                         >
                           {page}
                         </button>
-                      </React.Fragment>
+                      </Fragment>
                     );
                   })}
                   <button

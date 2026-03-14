@@ -1409,19 +1409,22 @@ export default function AdminDashboard() {
               <p className="text-xs text-gray-500 mt-1">Starting soon</p>
             </div>
             <div className="space-y-4">
-              {data.upcomingBatches.map((batch) => (
-                <div key={batch.id} className="p-4 rounded-lg bg-gray-50 hover:bg-blue-50 transition-all duration-200 border border-gray-200 hover:border-blue-200">
-                  <div className="flex justify-between items-start gap-4">
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-900 text-sm mb-1">{batch.name}</h4>
-                      <p className="text-xs text-gray-600">Starts: <span className="font-semibold text-gray-800">{batch.startDate}</span></p>
+              {data.upcomingBatches.map((batch, index) => {
+                const batchKey = batch.id ?? batch.name ?? `batch-${index}`;
+                return (
+                  <div key={batchKey} className="p-4 rounded-lg bg-gray-50 hover:bg-blue-50 transition-all duration-200 border border-gray-200 hover:border-blue-200">
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-900 text-sm mb-1">{batch.name}</h4>
+                        <p className="text-xs text-gray-600">Starts: <span className="font-semibold text-gray-800">{batch.startDate}</span></p>
+                      </div>
+                      <span className="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap">
+                        {batch.students} Students
+                      </span>
                     </div>
-                    <span className="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap">
-                      {batch.students} Students
-                    </span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ) : (
