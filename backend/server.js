@@ -1748,6 +1748,19 @@ app.get("/api/students/template", async (req, res) => {
   try {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Students");
+    const dataSheet = workbook.addWorksheet("DataValidation", { state: 'hidden' });
+
+    // Fetch dynamic data
+    const coursesRes = await Course.find({ status: "Active" }).select("name");
+    const batchesRes = await Batches.find({}).select("name");
+    
+    // Create unique lists safely
+    const courseNames = [...new Set(coursesRes.map(c => c.name))].filter(Boolean);
+    const batchNames = [...new Set(batchesRes.map(b => b.name))].filter(Boolean);
+
+    // Populate DataValidation sheet
+    dataSheet.getColumn("A").values = ["Courses", ...courseNames];
+    dataSheet.getColumn("B").values = ["Batches", ...batchNames];
 
     // Define columns
     worksheet.columns = [
@@ -1800,6 +1813,36 @@ app.get("/api/students/template", async (req, res) => {
       pattern: "solid",
       fgColor: { argb: "FFE0E0E0" },
     };
+
+    // Before writing, add data validations for up to 500 rows to avoid crashing
+    for (let i = 2; i <= 500; i++) {
+      // Force cell creation
+      worksheet.getRow(i).getCell(1).value = worksheet.getRow(i).getCell(1).value || null;
+
+      // Course Name is Col I
+      if (courseNames.length > 0) {
+        worksheet.getCell(`I${i}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          showErrorMessage: true,
+          errorTitle: "Invalid Course",
+          error: "Please select a valid course from the dropdown.",
+          formulae: [`DataValidation!$A$2:$A$${courseNames.length + 1}`]
+        };
+      }
+
+      // Batch Name is Col J
+      if (batchNames.length > 0) {
+        worksheet.getCell(`J${i}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          showErrorMessage: true,
+          errorTitle: "Invalid Batch",
+          error: "Please select a valid batch from the dropdown.",
+          formulae: [`DataValidation!$B$2:$B$${batchNames.length + 1}`]
+        };
+      }
+    }
 
     // Write to buffer
     const buffer = await workbook.xlsx.writeBuffer();
@@ -2571,8 +2614,27 @@ app.get("/api/teachers/template", async (req, res) => {
   console.log("📥 Teacher template download requested");
 
   try {
+    const { default: Syllabus } = await import("./models/Syllabus.js");
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Teachers");
+    const dataSheet = workbook.addWorksheet("DataValidation", { state: 'hidden' });
+
+    // Fetch dynamic data
+    const syllabusList = await Syllabus.find({});
+    const subjectsSet = new Set();
+    syllabusList.forEach(s => {
+      s.items?.forEach(item => {
+        if (item.subject) subjectsSet.add(item.subject);
+      });
+    });
+    const subjectNames = Array.from(subjectsSet).sort();
+
+    const batchesRes = await Batches.find({}).select("name");
+    const batchNames = [...new Set(batchesRes.map(b => b.name))].filter(Boolean);
+
+    // Populate DataValidation sheet
+    dataSheet.getColumn("A").values = ["Subjects", ...subjectNames];
+    dataSheet.getColumn("B").values = ["Batches", ...batchNames];
 
     worksheet.columns = [
       { header: "First Name *", key: "fname", width: 15 },
@@ -2618,6 +2680,36 @@ app.get("/api/teachers/template", async (req, res) => {
       pattern: "solid",
       fgColor: { argb: "FFE0E0E0" },
     };
+
+    // Before writing, add data validations for up to 500 rows to avoid crashing
+    for (let i = 2; i <= 500; i++) {
+      // Force cell creation
+      worksheet.getRow(i).getCell(1).value = worksheet.getRow(i).getCell(1).value || null;
+
+      // Subject is Col F
+      if (subjectNames.length > 0) {
+        worksheet.getCell(`F${i}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          showErrorMessage: true,
+          errorTitle: "Invalid Subject",
+          error: "Please select a valid subject from the dropdown.",
+          formulae: [`DataValidation!$A$2:$A$${subjectNames.length + 1}`]
+        };
+      }
+
+      // Batch Name is Col P
+      if (batchNames.length > 0) {
+        worksheet.getCell(`P${i}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          showErrorMessage: true,
+          errorTitle: "Invalid Batch",
+          error: "Please select a valid batch from the dropdown.",
+          formulae: [`DataValidation!$B$2:$B$${batchNames.length + 1}`]
+        };
+      }
+    }
 
     const buffer = await workbook.xlsx.writeBuffer();
     console.log("✅ Teacher template generated, size:", buffer.length, "bytes");
