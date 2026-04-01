@@ -2620,14 +2620,8 @@ app.get("/api/teachers/template", async (req, res) => {
     const dataSheet = workbook.addWorksheet("DataValidation", { state: 'hidden' });
 
     // Fetch dynamic data
-    const syllabusList = await Syllabus.find({});
-    const subjectsSet = new Set();
-    syllabusList.forEach(s => {
-      s.items?.forEach(item => {
-        if (item.subject) subjectsSet.add(item.subject);
-      });
-    });
-    const subjectNames = Array.from(subjectsSet).sort();
+    const rawSubjects = await Syllabus.distinct("items.subject");
+    const subjectNames = rawSubjects.filter(Boolean).sort();
 
     const batchesRes = await Batches.find({}).select("name");
     const batchNames = [...new Set(batchesRes.map(b => b.name))].filter(Boolean);
@@ -2642,7 +2636,7 @@ app.get("/api/teachers/template", async (req, res) => {
       { header: "Email *", key: "email", width: 25 },
       { header: "Phone *", key: "phone", width: 15 },
       { header: "Date of Birth (DD/MM/YYYY)", key: "dob", width: 24 },
-      { header: "Subject", key: "subject", width: 20 },
+      { header: "Subject(s) (comma-separated)", key: "subject", width: 30 },
       { header: "Employee Number", key: "emp_no", width: 15 },
       { header: "Aadhar (12 digits)", key: "aadhar", width: 15 },
       { header: "PAN Number", key: "pan_number", width: 15 },
@@ -2661,7 +2655,7 @@ app.get("/api/teachers/template", async (req, res) => {
       email: "rajesh.kumar@example.com",
       phone: "9876543210",
       dob: "15/05/1985",
-      subject: "Mathematics",
+      subject: "Mathematics, Physics",
       emp_no: "TCH001",
       aadhar: "123456789012",
       pan_number: "ABCDE1234F",
@@ -2691,9 +2685,10 @@ app.get("/api/teachers/template", async (req, res) => {
         worksheet.getCell(`F${i}`).dataValidation = {
           type: "list",
           allowBlank: true,
-          showErrorMessage: true,
-          errorTitle: "Invalid Subject",
-          error: "Please select a valid subject from the dropdown.",
+          showInputMessage: true,
+          promptTitle: "Multiple subjects",
+          prompt: "Select one subject from the dropdown, or type multiple subjects separated by commas.",
+          showErrorMessage: false,
           formulae: [`DataValidation!$A$2:$A$${subjectNames.length + 1}`]
         };
       }
@@ -2878,7 +2873,9 @@ app.post(
             user_id: user._id,
             fname: user.fname,
             lname: user.lname,
-            subjects: row["Subject"] ? [row["Subject"]] : [],
+            subjects: row["Subject(s) (comma-separated)"]
+              ? String(row["Subject(s) (comma-separated)"]).split(',').map(s => s.trim()).filter(Boolean)
+              : [],
             emp_no: empNo,
             joining_date: new Date(),
             salary: parseFloat(row["Salary"]) || 0,
